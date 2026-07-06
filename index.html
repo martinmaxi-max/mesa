@@ -169,8 +169,43 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 <div id="tab-rend" class="hidden">
   <div class="chips" id="subAn">
     <div class="chip on" data-s="rendimiento"><b>📊 Rendimiento</b></div>
+    <div class="chip" data-s="flujo"><b>💸 Real</b></div>
     <div class="chip" data-s="escenarios"><b>🎯 Escenarios</b></div>
     <div class="chip" data-s="baggers"><b>🚀 Baggers</b></div>
+    <div class="chip" data-s="pro"><b>🛠 Pro</b></div>
+  </div>
+
+  <!-- ===== FLUJO REAL ===== -->
+  <div id="sec-flujo" class="hidden">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:2px">Rendimiento real (con aportes y retiros)</div>
+      <div class="tag">Para medir la ganancia real, la app necesita saber cuándo entra o sale plata externa. Registrá acá los <b>aportes</b> (plata nueva que metés) y las <b>extracciones</b> (plata que retirás tras vender). Las rotaciones internas (vendo un ticker y compro otro) NO se registran acá: no son flujo externo.</div>
+      <div class="grid2">
+        <div><label>Tipo</label>
+          <select id="flTipo"><option value="aporte">💵 Aporte (entra plata)</option><option value="extraccion">🏧 Extracción (sale plata)</option></select></div>
+        <div><label>Monto (USD)</label><input id="flMonto" type="number" inputmode="decimal" step="any" placeholder="0"/></div>
+      </div>
+      <div class="grid2">
+        <div><label>Fecha</label><input id="flFecha" type="date"/></div>
+        <div><label>Nota (opcional)</label><input id="flNota" placeholder="ej: aporte mensual"/></div>
+      </div>
+      <div class="btnrow"><button class="btn" id="flGo">Registrar flujo</button></div>
+    </div>
+    <div class="secttl">Rendimiento por mes</div>
+    <div class="card" id="flMes"></div>
+    <div class="secttl">Rendimiento por año</div>
+    <div class="card" id="flAnio"></div>
+    <div class="secttl">Flujos registrados</div>
+    <div class="card" id="flList"></div>
+  </div>
+
+  <!-- ===== HERRAMIENTAS PRO ===== -->
+  <div id="sec-pro" class="hidden">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:2px">🛠 Herramientas Pro</div>
+      <div class="tag">Los frameworks de los fondos grandes aplicados a <b>tus</b> acciones. Elegí uno, poné el ticker si hace falta y generá el informe. Si el análisis directo no está disponible (según dónde abras la app), usá <b>Copiar prompt</b> y pegalo en Claude.</div>
+    </div>
+    <div id="proBody"></div>
   </div>
 
   <!-- ===== ESCENARIOS ===== -->
@@ -364,6 +399,7 @@ function freshState(){
     lastUpd: SEED_DATE + " (foto inicial)",
     positions: SEED_POS.map((p,i)=>({id:"s"+i, ...p})),
     ops: [], closed: [],
+    flows: [], snaps: [{f:SEED_DATE, v:82789}],
     proj: {...DEF_PROJ}, baggers: {...DEF_BAGG},
     idx: SEED_IDX.map(x=>({...x})), idxTs: SEED_DATE + " (foto inicial)"
   };
@@ -376,6 +412,8 @@ function load(){
       if(!S.proj) S.proj = {...DEF_PROJ};
       if(!S.baggers) S.baggers = {...DEF_BAGG};
       if(!S.idx){ S.idx = SEED_IDX.map(x=>({...x})); S.idxTs = SEED_DATE; }
+      if(!S.flows) S.flows = [];
+      if(!S.snaps) S.snaps = [{f:SEED_DATE, v:82789}];
       return;
     }
   }catch(e){}
@@ -432,6 +470,9 @@ function render(){
   renderEscen();
   renderBaggers();
   renderIdx();
+  snapToday(tot);
+  renderFlujo();
+  renderPro();
   $("#cclInput").value = S.ccl;
   // datalist
   $("#tickList").innerHTML = [...new Set(S.positions.map(p=>p.t))].map(t=>`<option value="${t}">`).join("");
@@ -481,13 +522,32 @@ function editPos(p){
   if(q===null) return;
   const px = prompt(`Precio unitario (${p.cur}):`, p.px);
   if(px===null) return;
-  const inv = prompt(`Costo total invertido en USD (vacío = sin costo):`, p.inv==null?"":p.inv);
+  const inv = prompt(
+`Costo total invertido. Formatos:
+· 1500          → dólares
+· 2300000 ARS   → pesos al CCL actual ($${fmt(S.ccl,0)})
+· 2300000 ARS 1250 → pesos con el CCL del día de compra
+(vacío = sin costo)`, p.inv==null?"":p.inv);
   if(inv===null) return;
   const nq=parseFloat(q), npx=parseFloat(px);
   if(isNaN(nq)||isNaN(npx)){ toast("Números inválidos"); return; }
   p.q=nq; p.px=npx;
-  p.inv = inv.trim()==="" ? null : parseFloat(inv);
-  save(); render(); toast(p.t+" actualizado");
+  const s = inv.trim();
+  if(s===""){ p.inv=null; }
+  else{
+    const m = s.replace(/\./g,"").replace(",",".").match(/^([\d.]+)\s*(ars)?\s*([\d.]+)?$/i);
+    if(!m){ toast("No entendí el costo — probá de nuevo"); return; }
+    const num = parseFloat(m[1]);
+    if(m[2]){ // vino en pesos
+      const cclCompra = m[3] ? parseFloat(m[3]) : S.ccl;
+      p.inv = num / cclCompra;
+      toast(p.t+": costo $"+fmt(num,0)+" ARS ÷ CCL "+fmt(cclCompra,0)+" = "+usd(p.inv));
+    } else {
+      p.inv = num;
+      toast(p.t+" actualizado");
+    }
+  }
+  save(); render();
 }
 
 function renderOps(){
@@ -714,6 +774,208 @@ $("#btnIdx").onclick = async ()=>{
   else toast("No se pudo actualizar (abrí la app en Safari/Chrome u hosteada)");
 };
 
+/* ================= FLUJO REAL (Dietz modificado) ================= */
+function snapToday(tot){
+  if(!S.snaps) return;
+  const hoy = new Date().toISOString().slice(0,10);
+  const last = S.snaps[S.snaps.length-1];
+  if(last && last.f===hoy){ if(Math.abs(last.v-tot)>0.5){ last.v=tot; try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){} } }
+  else { S.snaps.push({f:hoy, v:tot}); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){} }
+}
+function snapAt(fecha){ // último snapshot <= fecha
+  let r=null;
+  for(const s of S.snaps){ if(s.f<=fecha) r=s; else break; }
+  return r;
+}
+function dietz(v0, v1, flujo){ // flujo neto (+aportes, -extracciones), ponderación 0.5
+  const gan = v1 - v0 - flujo;
+  const base = v0 + flujo/2;
+  return {gan, pct: base>0 ? gan/base*100 : null};
+}
+function renderFlujo(){
+  const elM=$("#flMes"); if(!elM) return;
+  const snaps=[...S.snaps].sort((a,b)=>a.f<b.f?-1:1);
+  const flows=[...S.flows].sort((a,b)=>a.fecha<b.fecha?-1:1);
+  if(snaps.length<1){ elM.innerHTML='<span class="tag">Sin datos todavía.</span>'; return; }
+  const first=snaps[0].f, hoy=new Date().toISOString().slice(0,10);
+  // meses desde el primer snapshot
+  const meses=[];
+  let y=+first.slice(0,4), m=+first.slice(5,7);
+  const yH=+hoy.slice(0,4), mH=+hoy.slice(5,7);
+  while(y<yH || (y===yH&&m<=mH)){ meses.push({y,m}); m++; if(m>12){m=1;y++;} }
+  const MN=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const netFlow=(d1,d2)=>flows.filter(f=>f.fecha>d1&&f.fecha<=d2)
+    .reduce((x,f)=>x+(f.tipo==="aporte"?f.usd:-f.usd),0);
+  let htm="", rowsM=[];
+  meses.forEach(({y,m})=>{
+    const ini = y+"-"+String(m).padStart(2,"0")+"-01";
+    const iniPrev = new Date(y,m-1,0); // último día mes anterior
+    const d0 = iniPrev.toISOString().slice(0,10);
+    const fin = new Date(y,m,0).toISOString().slice(0,10);
+    const finEff = fin>hoy?hoy:fin;
+    const s0=snapAt(d0)||snaps[0], s1=snapAt(finEff);
+    if(!s0||!s1||s1.f<ini&&s0.f===s1.f) return;
+    const F=netFlow(s0.f,finEff);
+    const {gan,pct}=dietz(s0.v,s1.v,F);
+    rowsM.push({lbl:MN[m-1]+" "+String(y).slice(2), v0:s0.v, v1:s1.v, F, gan, pct});
+  });
+  if(!rowsM.length){ elM.innerHTML='<span class="tag">Todavía no hay un mes completo de datos. La app guarda una foto del patrimonio cada día que la abrís — con el tiempo esta tabla se llena sola.</span>'; }
+  else{
+    rowsM.slice(-12).reverse().forEach(r=>{
+      htm+=`<div class="row"><div><b>${r.lbl}</b><div class="meta">${usd(r.v0)} → ${usd(r.v1)}${r.F?` · flujo ${r.F>0?'+':''}${fmt(r.F,0)}`:""}</div></div>
+      <div class="val"><b class="${r.gan>=0?'pos':'neg'}">${r.gan>=0?'+':''}${fmt(r.gan,0)}</b>
+      <div class="meta ${r.gan>=0?'pos':'neg'}">${r.pct==null?"—":fmt(r.pct,1)+"%"}</div></div></div>`;
+    });
+    elM.innerHTML=htm;
+  }
+  // por año
+  const anios=[...new Set(meses.map(x=>x.y))];
+  let htmA="";
+  anios.forEach(y=>{
+    const d0str=(y-1)+"-12-31";
+    const finY=y+"-12-31", finEff=finY>hoy?hoy:finY;
+    const s0=snapAt(d0str)||snaps[0], s1=snapAt(finEff);
+    if(!s0||!s1) return;
+    const F=netFlow(s0.f,finEff);
+    const {gan,pct}=dietz(s0.v,s1.v,F);
+    htmA+=`<div class="row"><div><b>${y}</b><div class="meta">${usd(s0.v)} → ${usd(s1.v)}${F?` · flujo neto ${F>0?'+':''}${fmt(F,0)}`:""}</div></div>
+    <div class="val"><b class="${gan>=0?'pos':'neg'}">${gan>=0?'+':''}${fmt(gan,0)}</b>
+    <div class="meta ${gan>=0?'pos':'neg'}">${pct==null?"—":fmt(pct,1)+"% real"}</div></div></div>`;
+  });
+  $("#flAnio").innerHTML = htmA || '<span class="tag">Sin datos anuales todavía.</span>';
+  // lista de flujos
+  const elL=$("#flList");
+  if(!flows.length){ elL.innerHTML='<span class="tag">Sin aportes ni extracciones registrados. Cuando metas o saques plata, cargalo acá para que el % real sea correcto.</span>'; }
+  else{
+    elL.innerHTML="";
+    [...flows].reverse().forEach((f,ridx)=>{
+      const i=flows.length-1-ridx;
+      const d=document.createElement("div"); d.className="oprow";
+      d.innerHTML=`<div class="l1"><span>${f.tipo==="aporte"?"💵 Aporte":"🏧 Extracción"}${f.nota?` · <span style="color:var(--dim);font-weight:400">${f.nota}</span>`:""}</span>
+      <span class="${f.tipo==="aporte"?'pos':'neg'}">${f.tipo==="aporte"?'+':'−'}${usd(f.usd)}</span></div>
+      <div class="l2"><span>${f.fecha}</span><button class="del" data-delflow="${i}">borrar</button></div>`;
+      elL.appendChild(d);
+    });
+  }
+}
+document.addEventListener("click",e=>{
+  if(e.target.id==="flGo"){
+    const usdV=parseFloat($("#flMonto").value);
+    const fecha=$("#flFecha").value||new Date().toISOString().slice(0,10);
+    if(isNaN(usdV)||usdV<=0){ toast("Poné el monto en USD"); return; }
+    S.flows.push({tipo:$("#flTipo").value, usd:usdV, fecha, nota:$("#flNota").value.trim()});
+    save(); render(); $("#flMonto").value=""; $("#flNota").value="";
+    toast("Flujo registrado ✓");
+  }
+  const del=e.target.closest("[data-delflow]");
+  if(del){ S.flows.splice(+del.dataset.delflow,1); save(); render(); toast("Flujo borrado"); }
+});
+
+/* ================= HERRAMIENTAS PRO ================= */
+const FRAMEWORKS=[
+ {id:"goldman",firma:"Goldman Sachs",name:"Screener de acciones",e:"🔎",needsTicker:false,desc:"10 ideas que matchean tu perfil, con P/E, moat, target 12m y zona de entrada.",
+  prompt:(t,p)=>`Sos analista senior de renta variable en Goldman Sachs. Mi perfil: horizonte 2030-2035, riesgo alto, tesis IA/espacial/nuclear/cripto, inversor argentino con CEDEARs. Mi cartera: ${p}. Informe BREVE en español rioplatense (máx ~450 palabras): 8-10 acciones que matchean (ticker), P/E vs sector, moat (débil/moderado/fuerte), riesgo 1-10, target alcista/bajista 12m, zona de entrada con stop. Cerrá con tu top 3.`},
+ {id:"morgan",firma:"Morgan Stanley",name:"Valuación DCF",e:"📈",needsTicker:true,desc:"DCF: proyección 5 años, WACC, valor terminal y veredicto.",
+  prompt:(t,p)=>`Sos banquero de inversión VP en Morgan Stanley. DCF resumido de ${t} en español rioplatense (máx ~450 palabras): crecimiento de ingresos 5 años, margen, FCF, WACC, valor terminal y VEREDICTO al inicio (subvaluada/justa/sobrevaluada) con upside/downside vs precio actual. 2 supuestos que romperían el modelo.`},
+ {id:"bridgewater",firma:"Bridgewater",name:"Riesgo del portafolio",e:"🛡️",needsTicker:false,desc:"Concentración, correlaciones, estrés en recesión y rebalanceo.",
+  prompt:(t,p)=>`Sos analista de riesgo en Bridgewater. Evaluá ESTE portafolio: ${p}. Español rioplatense (máx ~500 palabras): concentración por sector con %, correlaciones, exposición cambiaria (argentino con CEDEARs), drawdown en recesión, 3 riesgos principales y cómo cubrirlos, rebalanceo con %. Veredicto de 2 líneas al inicio.`},
+ {id:"jpmorgan",firma:"JPMorgan",name:"Previa de resultados",e:"📊",needsTicker:true,desc:"Beat/miss, movimiento implícito y jugada antes del earnings.",
+  prompt:(t,p)=>`Sos analista senior en JPMorgan. Previa de resultados de ${t} en español rioplatense (máx ~450 palabras): historial beat/miss, consenso ingresos/EPS próximo trimestre, métricas clave, movimiento implícito por opciones, reacción histórica post-reporte, y tu jugada (comprar antes/vender antes/esperar).`},
+ {id:"citadel",firma:"Citadel",name:"Análisis técnico",e:"🎯",needsTicker:true,desc:"Tendencia, soportes, medias, RSI/MACD y plan de operación.",
+  prompt:(t,p)=>`Sos trader cuantitativo en Citadel. Análisis técnico de ${t} en español rioplatense y simple (máx ~450 palabras): tendencia diario/semanal/mensual, soportes y resistencias con precios, medias 50/100/200, RSI y MACD simple, patrón si hay, y plan: entrada, stop-loss, objetivo y ratio riesgo/recompensa. Cerrá con: compra fuerte/compra/neutral/venta/venta fuerte.`},
+ {id:"bain",firma:"Bain & Co.",name:"Ventaja competitiva",e:"🏛️",needsTicker:true,desc:"Panorama del sector, moats, cuota y la mejor acción del rubro.",
+  prompt:(t,p)=>`Sos socio senior en Bain & Company. Ventaja competitiva del SECTOR de ${t} en español rioplatense (máx ~450 palabras): 5-7 competidores con market cap, márgenes, moat de cada uno, tendencia de cuota 3 años, amenazas, y tu mejor selección con justificación + catalizadores 12m.`},
+ {id:"renaissance",firma:"Renaissance",name:"Patrones y anomalías",e:"✨",needsTicker:true,desc:"Estacionalidad, flujos, short interest y ventaja cuantificable.",
+  prompt:(t,p)=>`Sos investigador cuantitativo en Renaissance Technologies. Patrones y anomalías en ${t} en español rioplatense (máx ~450 palabras): estacionalidad, correlación con macro (Fed/CPI), insiders, propiedad institucional, short interest y squeeze, y la ventaja estadística cuantificable.`},
+ {id:"mckinsey",firma:"McKinsey",name:"Impacto macro",e:"🌐",needsTicker:false,desc:"Tasas, inflación, dólar, ciclo y ajustes para tu cartera.",
+  prompt:(t,p)=>`Sos socio del McKinsey Global Institute. Briefing macro para ESTE portafolio: ${p}. Español rioplatense (máx ~500 palabras): tasas e impacto en growth vs value, inflación y sectores ganadores/perdedores, dólar (argentino con CEDEARs), Fed 6-12m, riesgos geopolíticos, rotación sectorial y ajustes concretos AHORA.`},
+ {id:"blackrock",firma:"BlackRock",name:"Construcción de cartera",e:"💼",needsTicker:false,desc:"Asignación ideal, núcleo vs satélite y política de inversión.",
+  prompt:(t,p)=>`Sos estratega de portafolios en BlackRock. Situación: horizonte 2030-2035, riesgo alto, aporto ~USD 2.500/mes desde junio 2026, tesis IA/espacial/nuclear/cripto. Cartera: ${p}. Español rioplatense (máx ~500 palabras): asignación objetivo por categoría con %, núcleo vs satélite, retorno esperado y drawdown en mal año, calendario de rebalanceo, cómo distribuir los 2.500/mes, y política de inversión de 1 página.`},
+ {id:"harvard",firma:"Harvard Endowment",name:"Estrategia de dividendos",e:"🎓",needsTicker:false,desc:"Acciones con dividendo, seguridad del pago y proyección DRIP.",
+  prompt:(t,p)=>`Sos estratega del endowment de Harvard. Español rioplatense (máx ~450 palabras): 12-15 acciones con dividendo (ticker + yield), seguridad del dividendo 1-10, años de crecimiento, payout ratio, y proyección DRIP a 10 años. Aclará que es complementario a una cartera de crecimiento.`},
+];
+let T={fw:null, ticker:"", out:"", err:"", loading:false, showPrompt:false};
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+function mdToHtml(md){
+  let h=esc(md);
+  h=h.replace(/^#{1,3} (.*)$/gm,'<b style="display:block;margin:10px 0 3px;color:var(--gold)">$1</b>')
+     .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
+     .replace(/^[-•*] (.*)$/gm,"· $1")
+     .replace(/\n/g,"<br>");
+  return h;
+}
+function portfolioSummary(){
+  const cons={};
+  S.positions.filter(p=>p.q>0).forEach(p=>{ cons[p.t]=(cons[p.t]||0)+valUSD(p); });
+  const tot=Object.values(cons).reduce((a,b)=>a+b,0);
+  return Object.entries(cons).sort((a,b)=>b[1]-a[1])
+    .map(([t,v])=>`${t} US$${Math.round(v)} (${(v/tot*100).toFixed(1)}%)`).join(", ")
+    + `. Total US$${Math.round(tot)}.`;
+}
+function buildPrompt(fw){ return fw.prompt(T.ticker||"", portfolioSummary()); }
+async function callClaude(prompt, withWeb){
+  const body={model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:prompt}]};
+  if(withWeb) body.tools=[{type:"web_search_20250305",name:"web_search"}];
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!d||!Array.isArray(d.content)) throw new Error((d&&d.error&&d.error.message)||"respuesta inesperada");
+  return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+}
+function renderPro(){
+  const box=$("#proBody"); if(!box) return;
+  const tickers=[...new Set(S.positions.filter(p=>p.q>0&&p.type!=="fund").map(p=>p.t))];
+  let h="";
+  if(T.fw && T.fw.needsTicker){
+    h+=`<div class="card"><label>Ticker a analizar</label>
+      <input id="proTk" value="${esc(T.ticker)}" placeholder="Ej: NVDA" autocapitalize="characters"/>
+      <div style="margin-top:8px">${tickers.slice(0,18).map(t=>`<span class="pill" data-protk="${esc(t)}" style="cursor:pointer;${T.ticker===t?'border-color:var(--gold);color:var(--gold)':''}">${esc(t)}</span>`).join("")}</div></div>`;
+  }
+  h+=`<div class="kpis" style="grid-template-columns:1fr 1fr">${FRAMEWORKS.map(f=>`
+    <div class="kpi" data-profw="${f.id}" style="cursor:pointer;${T.fw&&T.fw.id===f.id?'border-color:var(--gold)':''}">
+      <small>${f.e} ${f.firma}</small><b style="font-size:.85rem">${f.name}</b>
+      <div class="meta" style="margin-top:3px;font-size:.66rem">${f.desc}</div>
+    </div>`).join("")}</div>`;
+  if(T.fw){
+    const falta = T.fw.needsTicker && !T.ticker;
+    h+=`<div class="card">
+      <div style="font-weight:700">${T.fw.e} ${T.fw.name}${T.fw.needsTicker&&T.ticker?" · "+esc(T.ticker):""}</div>
+      ${falta?'<div class="tag" style="margin-top:4px">Elegí un ticker arriba.</div>':""}
+      <div class="btnrow">
+        <button class="btn" id="proRun" ${falta||T.loading?"disabled":""}>${T.loading?"Analizando…":"⚡ Generar informe"}</button>
+        <button class="btn sec mini" id="proCopy" ${falta?"disabled":""}>📋 Copiar prompt</button>
+      </div>
+      ${T.err?`<div class="tag" style="color:var(--down);margin-top:8px">${esc(T.err)} — usá "Copiar prompt" y pegalo en Claude.</div>`:""}
+      ${T.out?`<div style="font-size:.82rem;line-height:1.55;margin-top:10px;border-top:1px solid var(--line);padding-top:10px">${mdToHtml(T.out)}</div>`:""}
+    </div>`;
+  }
+  box.innerHTML=h;
+  const tk=$("#proTk");
+  if(tk){ tk.oninput=()=>{ T.ticker=tk.value.trim().toUpperCase(); }; tk.onblur=()=>renderPro(); }
+}
+document.addEventListener("click",async e=>{
+  const fwEl=e.target.closest("[data-profw]");
+  if(fwEl){ T.fw=FRAMEWORKS.find(f=>f.id===fwEl.dataset.profw); T.out=""; T.err=""; renderPro(); return; }
+  const tkEl=e.target.closest("[data-protk]");
+  if(tkEl){ T.ticker=tkEl.dataset.protk; renderPro(); return; }
+  if(e.target.id==="proCopy" && T.fw){
+    const p=buildPrompt(T.fw);
+    try{ await navigator.clipboard.writeText(p); toast("Prompt copiado — pegalo en Claude 📋"); }
+    catch(err){ prompt("Copiá el prompt:", p); }
+    return;
+  }
+  if(e.target.id==="proRun" && T.fw && !T.loading){
+    T.loading=true; T.err=""; T.out=""; renderPro();
+    const p=buildPrompt(T.fw);
+    try{
+      let out;
+      try{ out=await callClaude(p,true); }
+      catch(e1){ out=await callClaude(p+"\n\n(Sin datos en vivo: aclaralo y usá tu mejor estimación reciente.)",false); out="_Nota: generado sin datos en vivo._\n\n"+out; }
+      T.out=out||"No recibí respuesta.";
+    }catch(err){ T.err="El análisis directo no está disponible acá ("+err.message+")."; }
+    T.loading=false; renderPro();
+  }
+});
+
 /* ================= OPERACIONES ================= */
 $("#opGo").onclick = ()=>{
   const tipo=$("#opTipo").value, b=$("#opBroker").value;
@@ -870,6 +1132,7 @@ function fbConnect(cfgStr, key, silent){
         S = remote;
         if(!S.proj) S.proj={...DEF_PROJ}; if(!S.baggers) S.baggers={...DEF_BAGG};
         if(!S.idx){ S.idx=SEED_IDX.map(x=>({...x})); }
+        if(!S.flows) S.flows=[]; if(!S.snaps) S.snaps=[{f:SEED_DATE,v:82789}];
         try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
         fb.ready = true;
         render();
@@ -915,7 +1178,7 @@ document.querySelectorAll("#subAn .chip").forEach(c=>{
   c.onclick=()=>{
     document.querySelectorAll("#subAn .chip").forEach(x=>x.classList.remove("on"));
     c.classList.add("on");
-    ["rendimiento","escenarios","baggers"].forEach(s=>{
+    ["rendimiento","escenarios","baggers","pro","flujo"].forEach(s=>{
       $("#sec-"+s).classList.toggle("hidden", s!==c.dataset.s);
     });
   };
@@ -924,6 +1187,7 @@ document.querySelectorAll("#subAn .chip").forEach(c=>{
 /* ================= INIT ================= */
 load();
 $("#opFecha").value = new Date().toISOString().slice(0,10);
+$("#flFecha").value = new Date().toISOString().slice(0,10);
 if(location.protocol==="https:" || location.protocol==="http:") $("#envNotice").style.display="none";
 render();
 // reconexión automática a la nube
