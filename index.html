@@ -130,6 +130,7 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 <!-- ============ TAB CARTERA ============ -->
 <div id="tab-cartera">
   <button class="btn" id="btnUpdate">↻ Actualizar precios</button>
+  <div class="btnrow"><button class="btn sec mini" id="btnCash">💵 Registrar / ajustar caja (efectivo USD)</button></div>
   <div class="notice" id="envNotice" style="margin-top:8px">
     Dentro del visor de Claude las APIs externas están bloqueadas: la actualización en vivo solo funciona abriendo este archivo en Safari/Chrome o hosteado (GitHub Pages / Firebase).
   </div>
@@ -524,6 +525,15 @@ function renderCartera(){
     arr.forEach(p=>{
       const v=valUSD(p);
       const row=document.createElement("div"); row.className="row";
+      if(p.type==="cash"){
+        row.innerHTML = `
+          <div><div class="tk">💵 Efectivo<span class="bkr bk-${p.b}">${BNAME[p.b]}</span></div>
+          <div class="meta" style="color:var(--faint)">disponible para invertir</div></div>
+          <div class="val"><b>${usd(v)}</b></div>`;
+        row.style.cursor="pointer";
+        row.onclick=()=>$("#btnCash").click();
+        card.appendChild(row); return;
+      }
       const pxLbl = p.cur==="ARS" ? "$"+fmt(p.px,p.px<100?2:0)+" ARS" : "US$"+fmt(p.px,2);
       const invLbl = p.inv!=null ? "costo "+usd(p.inv) : "sin costo · tocá para cargar";
       row.innerHTML = `
@@ -560,14 +570,20 @@ function editPos(p){
 function updEdUI(){
   const ars = $("#edMon").value==="ARS";
   $("#edCclWrap").classList.toggle("hidden", !ars);
-  const c=parseFloat($("#edCost").value), ccl=parseFloat($("#edCcl").value)||S.ccl;
-  $("#edPreview").textContent = (ars && c>0)
-    ? "$"+fmt(c,0)+" ARS ÷ CCL "+fmt(ccl,0)+" = "+usd(c/ccl)
-    : "";
+  const c=parseFloat($("#edCost").value), ccl=parseFloat($("#edCcl").value)||S.ccl, q=parseFloat($("#edQty").value);
+  let costUSD = ars ? (c>0?c/ccl:NaN) : c;
+  let txt = "";
+  if(ars && c>0) txt = "$"+fmt(c,0)+" ARS ÷ CCL "+fmt(ccl,0)+" = "+usd(costUSD);
+  if(!isNaN(costUSD) && costUSD>0 && q>0){
+    const ppc = costUSD/q;
+    txt += (txt?" · ":"") + "PPC: US$"+fmt(ppc, ppc<10?4:2)+"/u";
+  }
+  $("#edPreview").textContent = txt;
 }
 $("#edMon").onchange=updEdUI;
 $("#edCost").oninput=updEdUI;
 $("#edCcl").oninput=updEdUI;
+$("#edQty").oninput=updEdUI;
 $("#edCancel").onclick=()=>{ $("#modal").classList.add("hidden"); editing=null; };
 $("#modal").addEventListener("click",e=>{ if(e.target.id==="modal"){ $("#modal").classList.add("hidden"); editing=null; } });
 $("#edSave").onclick=()=>{
@@ -626,7 +642,7 @@ function renderOps(){
 function renderRend(){
   let inv=0, val=0;
   const rows=[], noCost=[];
-  S.positions.filter(p=>p.q>0).forEach(p=>{
+  S.positions.filter(p=>p.q>0 && p.type!=="cash").forEach(p=>{
     const v=valUSD(p);
     if(p.inv==null){ noCost.push({p,v}); return; }
     inv+=p.inv; val+=v;
@@ -726,7 +742,7 @@ function renderBaggers(){
   const box = $("#bgList"); if(!box) return;
   // consolidar por ticker
   const cons = {};
-  S.positions.filter(p=>p.q>0).forEach(p=>{
+  S.positions.filter(p=>p.q>0 && p.type!=="cash").forEach(p=>{
     const c = cons[p.t] = cons[p.t] || {t:p.t, v:0, brokers:[], fund:p.type==="fund", bucket:p.bucket};
     c.v += valUSD(p);
     if(!c.brokers.includes(p.b)) c.brokers.push(p.b);
@@ -949,7 +965,7 @@ function mdToHtml(md){
 }
 function portfolioSummary(){
   const cons={};
-  S.positions.filter(p=>p.q>0).forEach(p=>{ cons[p.t]=(cons[p.t]||0)+valUSD(p); });
+  S.positions.filter(p=>p.q>0 && p.type!=="cash").forEach(p=>{ cons[p.t]=(cons[p.t]||0)+valUSD(p); });
   const tot=Object.values(cons).reduce((a,b)=>a+b,0);
   return Object.entries(cons).sort((a,b)=>b[1]-a[1])
     .map(([t,v])=>`${t} US$${Math.round(v)} (${(v/tot*100).toFixed(1)}%)`).join(", ")
@@ -1032,12 +1048,15 @@ $("#opGo").onclick = ()=>{
 
   if(tipo==="compra"){
     if(!pos){
-      pos={id:"u"+Date.now(), t, b, type: b==="Binance"?"cry":(b==="InvestorTrust"?"fund":"ced"),
-           q:0, px:px, cur, inv:0, bucket:"Otros"};
+      const isCry = b==="Binance";
+      const CG = {BTC:"bitcoin",ETH:"ethereum",WBETH:"wrapped-beacon-eth",BNSOL:"binance-staked-sol",SOL:"solana",TIA:"celestia",TAO:"bittensor"};
+      pos={id:"u"+Date.now(), t, b, type: isCry?"cry":(b==="InvestorTrust"?"fund":"ced"),
+           q:0, px:px, cur, inv:0, bucket: isCry?"Cripto":"Otros"};
+      if(isCry && CG[t]) pos.cg = CG[t];
       S.positions.push(pos);
     }
     if(pos.inv==null) pos.inv=0;
-    pos.inv += totUSD;
+    pos.inv += totUSD;          // suma lo invertido → PPC ponderado = inv/q
     pos.q += q;
     pos.px = px; pos.cur = cur;
   } else {
@@ -1075,6 +1094,27 @@ async function fetchJSON(url){
     return await r.json();
   }
 }
+/* ================= CAJA (CASH) ================= */
+$("#btnCash").onclick = ()=>{
+  const br = prompt("¿En qué broker está la caja? IOL / Santander / Binance / InvestorTrust", "IOL");
+  if(br===null) return;
+  const bk = {iol:"IOL",santander:"Santander",binance:"Binance",investortrust:"InvestorTrust"}[br.trim().toLowerCase().replace(/\s/g,"")];
+  if(!bk){ toast("Broker no reconocido"); return; }
+  let pos = S.positions.find(p=>p.type==="cash" && p.b===bk);
+  const actual = pos ? pos.q : 0;
+  const monto = prompt("Efectivo disponible en USD (reemplaza el valor anterior):", actual);
+  if(monto===null) return;
+  const m = parseFloat(monto);
+  if(isNaN(m)||m<0){ toast("Monto inválido"); return; }
+  if(m===0 && pos){ pos.q=0; toast("Caja vaciada"); }
+  else if(pos){ pos.q=m; toast("Caja "+BNAME[bk]+" = "+usd(m)); }
+  else{
+    S.positions.push({id:"cash"+Date.now(), t:"CASH", b:bk, type:"cash", q:m, px:1, cur:"USD", inv:m, bucket:"Caja"});
+    toast("Caja creada: "+usd(m)+" en "+BNAME[bk]);
+  }
+  save(); render();
+};
+
 $("#btnUpdate").onclick = async ()=>{
   const btn=$("#btnUpdate"); btn.textContent="Actualizando…"; btn.disabled=true;
   const ok=[], fail=[];
