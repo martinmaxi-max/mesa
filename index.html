@@ -108,6 +108,18 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 .del{color:var(--down);background:none;border:none;font-size:.68rem;cursor:pointer;padding:2px 4px}
 .hidden{display:none}
 @media(min-width:600px){ .kpis{grid-template-columns:repeat(4,1fr)} }
+.idxstrip{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none;font-size:.7rem}
+.idxstrip::-webkit-scrollbar{display:none}
+.idxstrip .it{flex:0 0 auto;color:var(--dim);white-space:nowrap}
+.idxstrip .it b{color:var(--txt);font-weight:600}
+.idxstrip .it .chg{margin-left:3px}
+.acc{border:1px solid var(--line);border-radius:14px;margin-bottom:10px;overflow:hidden;background:var(--panel)}
+.acc summary{padding:12px;font-weight:700;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.acc summary::-webkit-details-marker{display:none}
+.acc summary .car{color:var(--faint);font-weight:400;transition:transform .15s}
+.acc[open] summary .car{transform:rotate(90deg)}
+.acc .accbody{padding:0 12px 12px}
+.oplegend{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:12px 0 4px}
 </style>
 </head>
 <body>
@@ -125,11 +137,13 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
   <span id="cntLbl"></span>
 </div>
 
+<div class="idxstrip" id="idxStrip"></div>
+
 <div class="chips" id="chips"></div>
 
 <!-- ============ TAB CARTERA ============ -->
 <div id="tab-cartera">
-  <button class="btn" id="btnUpdate">↻ Actualizar precios</button>
+  <button class="btn" id="btnUpdate">↻ Actualizar todo (precios, dólar, índices)</button>
   <div class="btnrow"><button class="btn sec mini" id="btnCash">💵 Registrar / ajustar caja (efectivo USD)</button></div>
   <div class="notice" id="envNotice" style="margin-top:8px">
     Dentro del visor de Claude las APIs externas están bloqueadas: la actualización en vivo solo funciona abriendo este archivo en Safari/Chrome o hosteado (GitHub Pages / Firebase).
@@ -141,25 +155,48 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 <div id="tab-operar" class="hidden">
   <div class="card">
     <div style="font-weight:700;margin-bottom:2px">Registrar operación</div>
-    <div class="tag">Compra: suma cantidad y costo (PPC ponderado). Venta: descuenta al costo promedio y registra el resultado. Para una rotación cargá la venta y después la compra.</div>
+    <div class="tag" id="opHelp">Compra: crea un lote nuevo. Venta: descuenta lotes por FIFO (el más viejo primero) y calcula la ganancia o pérdida real de esa venta. Rotación: hace la venta y la compra juntas, en un solo paso.</div>
+    <label>Tipo</label>
+    <select id="opTipo"><option value="compra">🟢 Compra</option><option value="venta">🔴 Venta</option><option value="rotacion">🔁 Rotación (vendo A, compro B)</option></select>
+
+    <div class="oplegend" id="lblBlockA">Operación</div>
     <div class="grid2">
-      <div><label>Tipo</label>
-        <select id="opTipo"><option value="compra">Compra</option><option value="venta">Venta</option></select></div>
       <div><label>Broker</label>
         <select id="opBroker"><option>IOL</option><option>Santander</option><option>Binance</option><option>InvestorTrust</option></select></div>
+      <div><label>Tipo de activo (si es ticker nuevo)</label>
+        <select id="opAssetType"><option value="ced">CEDEAR</option><option value="bond">Bono</option><option value="cry">Cripto</option><option value="fund">Fondo</option></select></div>
     </div>
-    <label>Ticker</label>
     <input id="opTicker" placeholder="Ej: NVDA, OKLO, BTC" autocapitalize="characters" list="tickList"/>
     <datalist id="tickList"></datalist>
     <div class="grid2">
       <div><label>Cantidad</label><input id="opQty" type="number" inputmode="decimal" step="any" placeholder="0"/></div>
       <div><label>Precio unitario</label><input id="opPx" type="number" inputmode="decimal" step="any" placeholder="0"/></div>
     </div>
-    <div class="grid2">
-      <div><label>Moneda del precio</label>
-        <select id="opMon"><option value="ARS">ARS (pesos)</option><option value="USD">USD</option></select></div>
-      <div><label>Fecha</label><input id="opFecha" type="date"/></div>
+    <label>Moneda del precio</label>
+    <select id="opMon"><option value="ARS">ARS (pesos)</option><option value="USD">USD</option></select>
+
+    <div id="opBlockB" class="hidden">
+      <div class="oplegend">Compro (segunda pata de la rotación)</div>
+      <div class="grid2">
+        <div><label>Broker</label>
+          <select id="opBroker2"><option>IOL</option><option>Santander</option><option>Binance</option><option>InvestorTrust</option></select></div>
+        <div><label>Tipo de activo (si es ticker nuevo)</label>
+          <select id="opAssetType2"><option value="ced">CEDEAR</option><option value="bond">Bono</option><option value="cry">Cripto</option><option value="fund">Fondo</option></select></div>
+      </div>
+      <input id="opTicker2" placeholder="Ej: OKLO" autocapitalize="characters" list="tickList"/>
+      <div class="grid2">
+        <div><label>Cantidad</label><input id="opQty2" type="number" inputmode="decimal" step="any" placeholder="0"/></div>
+        <div><label>Precio unitario</label><input id="opPx2" type="number" inputmode="decimal" step="any" placeholder="0"/></div>
+      </div>
+      <label>Moneda del precio</label>
+      <select id="opMon2"><option value="ARS">ARS (pesos)</option><option value="USD">USD</option></select>
     </div>
+
+    <div class="grid2">
+      <div><label>Fecha de la operación</label><input id="opFecha" type="date"/></div>
+      <div><label>CCL de esa fecha (solo si hay pata en ARS)</label><input id="opCcl" type="number" inputmode="decimal" step="any"/></div>
+    </div>
+    <div class="tag">Si estás cargando una operación vieja, poné el CCL de ese día (no el de hoy) para que el costo en dólares quede bien. Si no lo tocás, usa el CCL actual.</div>
     <div class="btnrow"><button class="btn" id="opGo">Registrar</button></div>
   </div>
 
@@ -174,34 +211,8 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 <div id="tab-rend" class="hidden">
   <div class="chips" id="subAn">
     <div class="chip on" data-s="rendimiento"><b>📊 Rendimiento</b></div>
-    <div class="chip" data-s="flujo"><b>💸 Real</b></div>
-    <div class="chip" data-s="escenarios"><b>🎯 Escenarios</b></div>
-    <div class="chip" data-s="baggers"><b>🚀 Baggers</b></div>
+    <div class="chip" data-s="escenarios"><b>🎯 Proyección</b></div>
     <div class="chip" data-s="pro"><b>🛠 Pro</b></div>
-  </div>
-
-  <!-- ===== FLUJO REAL ===== -->
-  <div id="sec-flujo" class="hidden">
-    <div class="card">
-      <div style="font-weight:700;margin-bottom:2px">Rendimiento real (con aportes y retiros)</div>
-      <div class="tag">Para medir la ganancia real, la app necesita saber cuándo entra o sale plata externa. Registrá acá los <b>aportes</b> (plata nueva que metés) y las <b>extracciones</b> (plata que retirás tras vender). Las rotaciones internas (vendo un ticker y compro otro) NO se registran acá: no son flujo externo.</div>
-      <div class="grid2">
-        <div><label>Tipo</label>
-          <select id="flTipo"><option value="aporte">💵 Aporte (entra plata)</option><option value="extraccion">🏧 Extracción (sale plata)</option></select></div>
-        <div><label>Monto (USD)</label><input id="flMonto" type="number" inputmode="decimal" step="any" placeholder="0"/></div>
-      </div>
-      <div class="grid2">
-        <div><label>Fecha</label><input id="flFecha" type="date"/></div>
-        <div><label>Nota (opcional)</label><input id="flNota" placeholder="ej: aporte mensual"/></div>
-      </div>
-      <div class="btnrow"><button class="btn" id="flGo">Registrar flujo</button></div>
-    </div>
-    <div class="secttl">Rendimiento por mes</div>
-    <div class="card" id="flMes"></div>
-    <div class="secttl">Rendimiento por año</div>
-    <div class="card" id="flAnio"></div>
-    <div class="secttl">Flujos registrados</div>
-    <div class="card" id="flList"></div>
   </div>
 
   <!-- ===== HERRAMIENTAS PRO ===== -->
@@ -245,20 +256,7 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
     <div class="notice" id="sc3x"></div>
   </div>
 
-  <!-- ===== BAGGERS ===== -->
-  <div id="sec-baggers" class="hidden">
-    <div class="card">
-      <div style="font-weight:700;margin-bottom:2px">Potencial multibagger 2030</div>
-      <div class="tag">Elegí el múltiplo objetivo de cada posición (consolidada entre brokers). El total de arriba muestra cuánto valdría la cartera si tus apuestas pegan. Los fondos de Investor Trust quedan a ×1,5 por defecto.</div>
-    </div>
-    <div class="kpis" style="grid-template-columns:1fr 1fr">
-      <div class="kpi"><small>Cartera hoy</small><b id="bgNow">—</b></div>
-      <div class="kpi"><small>Con tus objetivos</small><b id="bgTgt" class="pos">—</b></div>
-    </div>
-    <div id="bgList"></div>
-  </div>
-
-  <!-- ===== RENDIMIENTO ===== -->
+  <!-- ===== RENDIMIENTO (incluye Real y Baggers como acordeones opcionales) ===== -->
   <div id="sec-rendimiento">
   <div class="kpis">
     <div class="kpi"><small>Invertido (con costo)</small><b id="kInv">—</b></div>
@@ -266,18 +264,45 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
     <div class="kpi"><small>P&L no realizado</small><b id="kPnl">—</b></div>
     <div class="kpi"><small>P&L realizado</small><b id="kReal">—</b></div>
   </div>
-  <div class="notice">El P&L se calcula solo sobre posiciones que tienen costo cargado. Tocá cualquier posición en Cartera para cargar o corregir su costo (USD invertidos).</div>
+  <div class="notice">El costo se arma solo con las compras/ventas que cargues en «Operar» (FIFO). Tocá cualquier posición en Cartera para corregir manualmente su costo total.</div>
   <div class="secttl">Detalle por posición</div>
   <div id="rendList"></div>
-  </div>
-</div>
 
-<!-- ============ TAB ÍNDICES ============ -->
-<div id="tab-indices" class="hidden">
-  <button class="btn" id="btnIdx">↻ Actualizar índices</button>
-  <div class="notice" style="margin-top:8px">S&P/Nasdaq/Merval/Oro vía Yahoo, cripto vía CoinGecko, dólares vía DolarAPI, riesgo país vía ArgentinaDatos. Funciona abriendo la app en Safari/Chrome u hosteada.</div>
-  <div class="kpis" id="idxGrid" style="grid-template-columns:1fr 1fr"></div>
-  <div class="tag" style="margin:2px 4px" id="idxTs"></div>
+  <details class="acc" style="margin-top:14px">
+    <summary>💵 Rendimiento real (aportes y extracciones) <span class="car">▸</span></summary>
+    <div class="accbody">
+      <div class="tag" style="margin:8px 0">Para medir la ganancia real, la app necesita saber cuándo entra o sale plata externa. Registrá acá los <b>aportes</b> (plata nueva que metés) y las <b>extracciones</b> (plata que retirás). Las rotaciones internas NO van acá.</div>
+      <div class="grid2">
+        <div><label>Tipo</label>
+          <select id="flTipo"><option value="aporte">💵 Aporte (entra plata)</option><option value="extraccion">🏧 Extracción (sale plata)</option></select></div>
+        <div><label>Monto (USD)</label><input id="flMonto" type="number" inputmode="decimal" step="any" placeholder="0"/></div>
+      </div>
+      <div class="grid2">
+        <div><label>Fecha</label><input id="flFecha" type="date"/></div>
+        <div><label>Nota (opcional)</label><input id="flNota" placeholder="ej: aporte mensual"/></div>
+      </div>
+      <div class="btnrow"><button class="btn mini" id="flGo">Registrar flujo</button></div>
+      <div class="secttl">Rendimiento por mes</div>
+      <div class="card" id="flMes"></div>
+      <div class="secttl">Rendimiento por año</div>
+      <div class="card" id="flAnio"></div>
+      <div class="secttl">Flujos registrados</div>
+      <div class="card" id="flList"></div>
+    </div>
+  </details>
+
+  <details class="acc">
+    <summary>🚀 Objetivo multibagger (opcional) <span class="car">▸</span></summary>
+    <div class="accbody">
+      <div class="tag" style="margin:8px 0">Elegí el múltiplo objetivo de cada posición. Es una proyección hipotética, no afecta el P&L real de arriba.</div>
+      <div class="kpis" style="grid-template-columns:1fr 1fr">
+        <div class="kpi"><small>Cartera hoy</small><b id="bgNow">—</b></div>
+        <div class="kpi"><small>Con tus objetivos</small><b id="bgTgt" class="pos">—</b></div>
+      </div>
+      <div id="bgList"></div>
+    </div>
+  </details>
+  </div>
 </div>
 
 <!-- ============ TAB AJUSTES ============ -->
@@ -319,6 +344,7 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 <div id="modal" class="hidden">
   <div class="sheet">
     <div style="font-weight:700;font-size:1rem" id="edTitle">—</div>
+    <div class="tag" style="margin:4px 0 8px">Ajuste manual: reemplaza el detalle de compras de esta posición por un solo costo total. Para que el historial quede exacto (varias compras a distintos precios), mejor cargalas una por una en la pestaña «Operar».</div>
     <div class="grid2">
       <div><label>Cantidad</label><input id="edQty" type="number" inputmode="decimal" step="any"/></div>
       <div><label>Precio unitario actual</label><input id="edPx" type="number" inputmode="decimal" step="any"/></div>
@@ -344,7 +370,6 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
   <button data-tab="cartera" class="on"><span>💼</span>Cartera</button>
   <button data-tab="operar"><span>✍️</span>Operar</button>
   <button data-tab="rend"><span>📊</span>Análisis</button>
-  <button data-tab="indices"><span>📈</span>Índices</button>
   <button data-tab="ajustes"><span>⚙️</span>Ajustes</button>
 </div>
 
@@ -406,8 +431,21 @@ const SEED_POS = [
 ];
 
 /* ================= STATE ================= */
-const KEY = "mesa_v8";
+const KEY = "mesa_v9";
 let S;
+/* Migra el modelo viejo (costo "inv" pooled) al nuevo modelo de lotes FIFO.
+   p.inv queda como CACHE derivado de la suma de p.lots — nunca se edita directo,
+   siempre se recalcula con invRecalc() después de tocar los lotes. */
+function invRecalc(p){ p.inv = (p.lots && p.lots.length) ? p.lots.reduce((s,l)=>s+l.costUSD,0) : null; }
+function migrateModel(state){
+  (state.positions||[]).forEach(p=>{
+    if(!p.lots){
+      p.lots = (p.inv!=null && p.inv>0 && p.q>0) ? [{q:p.q, costUSD:p.inv, fecha:"previo a v9"}] : [];
+    }
+    invRecalc(p);
+  });
+  (state.closed||[]).forEach(c=>{ if(!c.detail) c.detail = []; });
+}
 const SEED_IDX = [
  {k:"spx",  n:"S&P 500",        v:7483,    chg:null, d:0},
  {k:"ndq",  n:"Nasdaq Comp.",   v:26518,   chg:null, d:0},
@@ -423,7 +461,7 @@ const SEED_IDX = [
 const DEF_PROJ = {cap:null, ap:2500, b:10, m:20, o:30};
 const DEF_BAGG = {ASTS:10, OKLO:8, RKLB:5, RGTI:10, TAO:10, TIA:5, IREN:5, IBIT:3, BTC:3, WBETH:3, BNSOL:3, NVDA:2, PLTR:3};
 function freshState(){
-  return {
+  const st = {
     ccl: SEED_CCL,
     lastUpd: SEED_DATE + " (foto inicial)",
     positions: SEED_POS.map((p,i)=>({id:"s"+i, ...p})),
@@ -432,9 +470,16 @@ function freshState(){
     proj: {...DEF_PROJ}, baggers: {...DEF_BAGG},
     idx: SEED_IDX.map(x=>({...x})), idxTs: SEED_DATE + " (foto inicial)"
   };
+  migrateModel(st);
+  return st;
 }
 function load(){
   try{
+    // migración automática desde la versión anterior (mesa_v8) si no hay v9 todavía
+    if(!localStorage.getItem(KEY)){
+      const old = localStorage.getItem("mesa_v8");
+      if(old) localStorage.setItem(KEY, old);
+    }
     const raw = localStorage.getItem(KEY);
     if(raw){
       S = JSON.parse(raw);
@@ -443,6 +488,7 @@ function load(){
       if(!S.idx){ S.idx = SEED_IDX.map(x=>({...x})); S.idxTs = SEED_DATE; }
       if(!S.flows) S.flows = [];
       if(!S.snaps) S.snaps = [{f:SEED_DATE, v:82789}];
+      migrateModel(S);
       return;
     }
   }catch(e){}
@@ -592,18 +638,23 @@ $("#edSave").onclick=()=>{
   if(isNaN(q)||q<0||isNaN(px)||px<=0){ toast("Cantidad o precio inválido"); return; }
   editing.q=q; editing.px=px;
   const cRaw=$("#edCost").value.trim();
-  if(cRaw===""){ editing.inv=null; toast(editing.t+" actualizado (sin costo)"); }
+  // Esta edición manual reemplaza todo el historial de lotes por UNO solo (reconciliación).
+  // Si venís cargando compras/ventas desde "Operar", mejor no toques esto: se arma solo por FIFO.
+  if(cRaw===""){ editing.lots=[]; invRecalc(editing); toast(editing.t+" actualizado (sin costo)"); }
   else{
     const c=parseFloat(cRaw);
     if(isNaN(c)||c<0){ toast("Costo inválido"); return; }
+    let costUSD;
     if($("#edMon").value==="ARS"){
       const ccl=parseFloat($("#edCcl").value)||S.ccl;
-      editing.inv=c/ccl;
-      toast("Costo: $"+fmt(c,0)+" ARS ÷ "+fmt(ccl,0)+" = "+usd(editing.inv));
+      costUSD = c/ccl;
+      toast("Costo: $"+fmt(c,0)+" ARS ÷ "+fmt(ccl,0)+" = "+usd(costUSD));
     } else {
-      editing.inv=c;
+      costUSD = c;
       toast(editing.t+" actualizado");
     }
+    editing.lots=[{q:q, costUSD, fecha:"manual"}];
+    invRecalc(editing);
   }
   $("#modal").classList.add("hidden"); editing=null;
   save(); render();
@@ -629,8 +680,9 @@ function renderOps(){
     [...S.closed].reverse().forEach(c=>{
       tot+=c.pnl;
       const d=document.createElement("div"); d.className="oprow";
-      d.innerHTML=`<div class="l1"><span>${c.t} <span class="bkr bk-${c.b}" style="font-size:.6rem">${BNAME[c.b]}</span></span><span class="${c.pnl>=0?'pos':'neg'}">${c.pnl>=0?'+':''}${fmt(c.pnl,0)} USD</span></div>
-      <div class="l2"><span>${fmt(c.q,2)} u vendidas</span><span>${c.fecha}</span></div>`;
+      const fifoDates = (c.detail&&c.detail.length) ? [...new Set(c.detail.map(x=>x.buyFecha))].join(", ") : "";
+      d.innerHTML=`<div class="l1"><span>${c.t} <span class="bkr bk-${c.b}" style="font-size:.6rem">${BNAME[c.b]}</span></span><span class="${c.noCost?'':c.pnl>=0?'pos':'neg'}">${c.noCost?'sin costo':(c.pnl>=0?'+':'')+fmt(c.pnl,0)+' USD'}</span></div>
+      <div class="l2"><span>${fmt(c.q,2)} u vendidas${fifoDates?" · lotes de "+fifoDates:""}</span><span>${c.fecha}</span></div>`;
       cb.appendChild(d);
     });
     const t=document.createElement("div"); t.className="oprow";
@@ -773,17 +825,17 @@ document.addEventListener("click",e=>{
   if(t){ S.baggers[t.dataset.bg] = parseFloat(t.dataset.m); save(); renderBaggers(); }
 });
 
-/* ================= ÍNDICES ================= */
+/* ================= ÍNDICES (strip compacto arriba de Cartera) ================= */
 function renderIdx(){
-  const g = $("#idxGrid"); if(!g) return;
+  const g = $("#idxStrip"); if(!g) return;
   g.innerHTML = "";
   S.idx.forEach(x=>{
-    const d=document.createElement("div"); d.className="kpi";
-    const chg = x.chg==null ? "" : `<div class="meta ${x.chg>=0?'pos':'neg'}" style="margin-top:2px">${x.chg>=0?'+':''}${fmt(x.chg,2)}% hoy</div>`;
-    d.innerHTML = `<small>${x.n}</small><b>${x.v==null?"—":(x.pre||"")+fmt(x.v,x.d)+(x.suf||"")}</b>${chg}`;
+    if(x.v==null) return;
+    const d=document.createElement("div"); d.className="it";
+    const chg = x.chg==null ? "" : `<span class="chg ${x.chg>=0?'pos':'neg'}">${x.chg>=0?'+':''}${fmt(x.chg,1)}%</span>`;
+    d.innerHTML = `${x.n} <b>${(x.pre||"")+fmt(x.v,x.d)+(x.suf||"")}</b>${chg}`;
     g.appendChild(d);
   });
-  $("#idxTs").textContent = "Última actualización: " + (S.idxTs||"—");
 }
 async function yahooQuote(sym){
   const url = "https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?range=1d&interval=1d";
@@ -792,8 +844,8 @@ async function yahooQuote(sym){
   const prev = r.chartPreviousClose || r.previousClose;
   return {v:r.regularMarketPrice, chg: prev ? (r.regularMarketPrice/prev-1)*100 : null};
 }
-$("#btnIdx").onclick = async ()=>{
-  const btn=$("#btnIdx"); btn.textContent="Actualizando…"; btn.disabled=true;
+// Trae S&P/Nasdaq/Merval/Oro/cripto/riesgo país. Devuelve {ok:[], fail:[]}. La reusa btnUpdate.
+async function fetchIndices(){
   const setIdx=(k,v,chg)=>{ const x=S.idx.find(i=>i.k===k); if(x&&v){ x.v=v; x.chg=chg==null?x.chg:chg; } };
   const ok=[], fail=[];
   const jobs = [
@@ -807,16 +859,15 @@ $("#btnIdx").onclick = async ()=>{
       setIdx("btc",d.bitcoin.usd,d.bitcoin.usd_24h_change);
       setIdx("eth",d.ethereum.usd,d.ethereum.usd_24h_change);
       setIdx("sol",d.solana.usd,d.solana.usd_24h_change);
-      ok.push("cripto");
-    }catch(e){ fail.push("cripto"); }
+      ok.push("cripto (índices)");
+    }catch(e){ fail.push("cripto (índices)"); }
   })());
   jobs.push((async()=>{
     try{
-      const c = await fetchJSON("https://dolarapi.com/v1/dolares/contadoconliqui");
       const m = await fetchJSON("https://dolarapi.com/v1/dolares/bolsa");
-      setIdx("ccl",c.venta,null); setIdx("mep",m.venta,null);
-      S.ccl = c.venta; ok.push("dólares");
-    }catch(e){ fail.push("dólares"); }
+      const x=S.idx.find(i=>i.k==="mep"); if(x&&m.venta) x.v=m.venta;
+      ok.push("MEP");
+    }catch(e){ fail.push("MEP"); }
   })());
   jobs.push((async()=>{
     try{
@@ -826,12 +877,8 @@ $("#btnIdx").onclick = async ()=>{
   })());
   await Promise.all(jobs);
   S.idxTs = new Date().toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-  save(); render();
-  btn.textContent="↻ Actualizar índices"; btn.disabled=false;
-  if(ok.length && !fail.length) toast("Índices actualizados ✓");
-  else if(ok.length) toast("OK: "+ok.join(", ")+" · Falló: "+fail.join(", "));
-  else toast("No se pudo actualizar (abrí la app en Safari/Chrome u hosteada)");
-};
+  return {ok, fail};
+}
 
 /* ================= FLUJO REAL (Dietz modificado) ================= */
 function snapToday(tot){
@@ -1035,50 +1082,107 @@ document.addEventListener("click",async e=>{
   }
 });
 
-/* ================= OPERACIONES ================= */
-$("#opGo").onclick = ()=>{
-  const tipo=$("#opTipo").value, b=$("#opBroker").value;
-  const t=$("#opTicker").value.trim().toUpperCase();
-  const q=parseFloat($("#opQty").value), px=parseFloat($("#opPx").value);
-  const cur=$("#opMon").value;
-  const fecha=$("#opFecha").value || new Date().toISOString().slice(0,10);
-  if(!t||isNaN(q)||q<=0||isNaN(px)||px<=0){ toast("Completá ticker, cantidad y precio"); return; }
-  const totUSD = cur==="ARS" ? q*px/S.ccl : q*px;
+/* ================= OPERACIONES (motor FIFO) ================= */
+const CG_MAP = {BTC:"bitcoin",ETH:"ethereum",WBETH:"wrapped-beacon-eth",BNSOL:"binance-staked-sol",SOL:"solana",TIA:"celestia",TAO:"bittensor"};
+function findOrCreatePos(t,b,assetType){
   let pos = S.positions.find(p=>p.t===t && p.b===b);
+  if(!pos){
+    const isCry = assetType==="cry" || (b==="Binance" && !assetType);
+    const type = assetType || (isCry?"cry":(b==="InvestorTrust"?"fund":"ced"));
+    pos={id:"u"+Date.now()+Math.random().toString(36).slice(2,6), t, b, type,
+         q:0, px:0, cur:"USD", inv:null, lots:[], bucket: type==="cry"?"Cripto":"Otros"};
+    if(type==="cry" && CG_MAP[t]) pos.cg = CG_MAP[t];
+    S.positions.push(pos);
+  }
+  if(!pos.lots) pos.lots=[];
+  return pos;
+}
+// Registra una compra: agrega un lote nuevo con su costo en USD (usando el CCL de ESA fecha si es ARS).
+function doCompra(t,b,q,px,cur,fecha,ccl,assetType){
+  const totUSD = cur==="ARS" ? q*px/ccl : q*px;
+  const pos = findOrCreatePos(t,b,assetType);
+  pos.lots.push({q, costUSD:totUSD, fecha});
+  invRecalc(pos);
+  pos.q += q; pos.px = px; pos.cur = cur;
+  S.ops.push({tipo:"compra", t, b, q, px, cur, totUSD, fecha});
+  return {ok:true, totUSD};
+}
+// Registra una venta: consume lotes FIFO (el más viejo primero) y calcula la ganancia/pérdida real.
+function doVenta(t,b,q,px,cur,fecha,ccl){
+  const pos = S.positions.find(p=>p.t===t && p.b===b);
+  const qty = pos ? (pos.lots||[]).reduce((s,l)=>s+l.q,0) : 0; // cantidad con costo cargado (FIFO)
+  if(!pos || pos.q < q - 1e-6) return {ok:false, msg:"No tenés esa cantidad de "+t+" en "+BNAME[b]};
+  const totUSD = cur==="ARS" ? q*px/ccl : q*px;
+  let remaining=q, costUsed=0, detail=[], noCost=false;
+  if(qty <= 1e-6){
+    noCost = true; // no hay lotes con costo: resultado = 0, no se puede saber si ganaste o perdiste
+  } else {
+    while(remaining>1e-6 && pos.lots.length){
+      const lot=pos.lots[0];
+      const take=Math.min(lot.q, remaining);
+      const costPortion=(lot.costUSD/lot.q)*take;
+      costUsed+=costPortion;
+      detail.push({q:take, costUSD:costPortion, buyFecha:lot.fecha});
+      lot.q-=take; lot.costUSD-=costPortion; remaining-=take;
+      if(lot.q<=1e-6) pos.lots.shift();
+    }
+    if(remaining>1e-6) noCost=true; // vendiste más de lo que tenía costo cargado
+  }
+  invRecalc(pos);
+  const pnl = noCost ? 0 : (totUSD-costUsed);
+  S.closed.push({t,b,q,pnl,fecha,detail,noCost});
+  pos.q -= q; pos.px=px; pos.cur=cur;
+  if(pos.q<=1e-6) pos.q=0;
+  S.ops.push({tipo:"venta", t, b, q, px, cur, totUSD, fecha});
+  return {ok:true, totUSD, pnl, noCost};
+}
+function readOpForm(suffix){
+  return {
+    b: $("#opBroker"+suffix).value,
+    t: $("#opTicker"+suffix).value.trim().toUpperCase(),
+    q: parseFloat($("#opQty"+suffix).value),
+    px: parseFloat($("#opPx"+suffix).value),
+    cur: $("#opMon"+suffix).value,
+    assetType: $("#opAssetType"+suffix) ? $("#opAssetType"+suffix).value : "ced"
+  };
+}
+$("#opTipo").onchange=()=>{
+  const tipo=$("#opTipo").value;
+  $("#opBlockB").classList.toggle("hidden", tipo!=="rotacion");
+  $("#lblBlockA").textContent = tipo==="rotacion" ? "Vendo (primera pata)" : (tipo==="venta"?"Venta":"Compra");
+  $("#opHelp").textContent = tipo==="compra"
+    ? "Crea un lote nuevo con su costo. Si el precio lo cargaste en pesos, se convierte a dólares con el CCL de esa fecha."
+    : tipo==="venta"
+    ? "Descuenta lotes por FIFO (el más viejo primero) y calcula la ganancia o pérdida real de esa venta."
+    : "Vende el ticker A y compra el ticker B en un solo paso — ideal para rotaciones internas de cartera.";
+};
+$("#opGo").onclick = ()=>{
+  const tipo=$("#opTipo").value;
+  const fecha=$("#opFecha").value || new Date().toISOString().slice(0,10);
+  const ccl=parseFloat($("#opCcl").value)||S.ccl;
+  const A=readOpForm("");
+  if(!A.t||isNaN(A.q)||A.q<=0||isNaN(A.px)||A.px<=0){ toast("Completá ticker, cantidad y precio"); return; }
 
   if(tipo==="compra"){
-    if(!pos){
-      const isCry = b==="Binance";
-      const CG = {BTC:"bitcoin",ETH:"ethereum",WBETH:"wrapped-beacon-eth",BNSOL:"binance-staked-sol",SOL:"solana",TIA:"celestia",TAO:"bittensor"};
-      pos={id:"u"+Date.now(), t, b, type: isCry?"cry":(b==="InvestorTrust"?"fund":"ced"),
-           q:0, px:px, cur, inv:0, bucket: isCry?"Cripto":"Otros"};
-      if(isCry && CG[t]) pos.cg = CG[t];
-      S.positions.push(pos);
-    }
-    if(pos.inv==null) pos.inv=0;
-    pos.inv += totUSD;          // suma lo invertido → PPC ponderado = inv/q
-    pos.q += q;
-    pos.px = px; pos.cur = cur;
-  } else {
-    if(!pos || pos.q<q){ toast("No tenés esa cantidad de "+t+" en "+BNAME[b]); return; }
-    let pnl=null;
-    if(pos.inv!=null && pos.q>0){
-      const avg = pos.inv/pos.q;          // costo promedio USD por unidad
-      pnl = totUSD - avg*q;
-      pos.inv -= avg*q;
-      S.closed.push({t,b,q,pnl,fecha});
-    } else {
-      S.closed.push({t,b,q,pnl:0,fecha,noCost:true});
-      toast("Venta registrada, pero "+t+" no tenía costo cargado: resultado = 0");
-    }
-    pos.q -= q;
-    pos.px = px; pos.cur = cur;
-    if(pos.q<=0.0000001){ pos.q=0; }
+    doCompra(A.t,A.b,A.q,A.px,A.cur,fecha,ccl,A.assetType);
+    save(); render();
+    toast("Compra de "+A.t+" registrada ✓");
+  } else if(tipo==="venta"){
+    const r=doVenta(A.t,A.b,A.q,A.px,A.cur,fecha,ccl);
+    if(!r.ok){ toast(r.msg); return; }
+    save(); render();
+    if(r.noCost) toast("Venta registrada, pero "+A.t+" no tenía costo cargado: resultado = 0");
+    else toast("Venta de "+A.t+" registrada · "+(r.pnl>=0?"ganancia ":"pérdida ")+usd(Math.abs(r.pnl)));
+  } else { // rotación
+    const B=readOpForm("2");
+    if(!B.t||isNaN(B.q)||B.q<=0||isNaN(B.px)||B.px<=0){ toast("Completá también los datos de lo que comprás"); return; }
+    const rv=doVenta(A.t,A.b,A.q,A.px,A.cur,fecha,ccl);
+    if(!rv.ok){ toast(rv.msg); return; }
+    doCompra(B.t,B.b,B.q,B.px,B.cur,fecha,ccl,B.assetType);
+    save(); render();
+    toast("Rotación registrada: vendiste "+A.t+", compraste "+B.t+(rv.noCost?"":" · "+(rv.pnl>=0?"+":"")+fmt(rv.pnl,0)+" en la venta"));
   }
-  S.ops.push({tipo,t,b,q,px,cur,totUSD,fecha});
-  save(); render();
-  $("#opQty").value=""; $("#opPx").value="";
-  toast((tipo==="compra"?"Compra":"Venta")+" de "+t+" registrada ✓");
+  ["opQty","opPx","opTicker","opQty2","opPx2","opTicker2"].forEach(id=>{ const e=$("#"+id); if(e) e.value=""; });
 };
 
 /* ================= ACTUALIZACIÓN DE PRECIOS ================= */
@@ -1116,12 +1220,15 @@ $("#btnCash").onclick = ()=>{
 };
 
 $("#btnUpdate").onclick = async ()=>{
-  const btn=$("#btnUpdate"); btn.textContent="Actualizando…"; btn.disabled=true;
+  const btn=$("#btnUpdate"); const label=btn.textContent; btn.textContent="Actualizando…"; btn.disabled=true;
   const ok=[], fail=[];
   // 1) CCL
   try{
     const d = await fetchJSON("https://dolarapi.com/v1/dolares/contadoconliqui");
-    if(d && d.venta){ S.ccl = d.venta; ok.push("CCL"); }
+    if(d && d.venta){
+      S.ccl = d.venta; ok.push("CCL");
+      const x=S.idx.find(i=>i.k==="ccl"); if(x) x.v=d.venta;
+    }
   }catch(e){ fail.push("CCL"); }
   // 2) CEDEARs (data912 BYMA live)
   try{
@@ -1134,7 +1241,21 @@ $("#btnUpdate").onclick = async ()=>{
     });
     if(n) ok.push("CEDEARs ("+n+")"); else fail.push("CEDEARs");
   }catch(e){ fail.push("CEDEARs"); }
-  // 3) Cripto (CoinGecko)
+  // 3) Bonos (data912, sobre BYMA en ARS)
+  try{
+    const hasBonds = S.positions.some(p=>p.type==="bond" && p.q>0);
+    if(hasBonds){
+      const arr = await fetchJSON("https://data912.com/live/arg_bonos");
+      const map = {};
+      (arr||[]).forEach(x=>{ map[(x.symbol||"").toUpperCase()] = x.c || x.px_ask || x.px_bid; });
+      let n=0;
+      S.positions.forEach(p=>{
+        if(p.type==="bond" && map[p.t]){ p.px = map[p.t]; p.cur="ARS"; n++; }
+      });
+      if(n) ok.push("Bonos ("+n+")"); else fail.push("Bonos");
+    }
+  }catch(e){ fail.push("Bonos"); }
+  // 4) Cripto (CoinGecko)
   try{
     const ids = S.positions.filter(p=>p.cg && p.q>0).map(p=>p.cg).join(",");
     if(ids){
@@ -1144,10 +1265,15 @@ $("#btnUpdate").onclick = async ()=>{
       if(n) ok.push("Cripto ("+n+")"); else fail.push("Cripto");
     }
   }catch(e){ fail.push("Cripto"); }
+  // 5) Índices de mercado (S&P/Nasdaq/Merval/Oro/riesgo país/MEP)
+  try{
+    const r = await fetchIndices();
+    ok.push(...r.ok); fail.push(...r.fail);
+  }catch(e){ fail.push("índices"); }
 
   S.lastUpd = new Date().toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
   save(); render();
-  btn.textContent="↻ Actualizar precios"; btn.disabled=false;
+  btn.textContent=label; btn.disabled=false;
   if(ok.length && !fail.length) toast("Actualizado: "+ok.join(", "));
   else if(ok.length) toast("OK: "+ok.join(", ")+" · Falló: "+fail.join(", "));
   else toast("No se pudo actualizar (¿estás dentro del visor de Claude? Abrí el archivo en Safari/Chrome)");
@@ -1164,7 +1290,7 @@ $("#btnImport").onclick=()=>$("#fileImport").click();
 $("#fileImport").onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   const r=new FileReader();
-  r.onload=()=>{ try{ S=JSON.parse(r.result); save(); render(); toast("Backup importado ✓"); }catch(err){ toast("Archivo inválido"); } };
+  r.onload=()=>{ try{ S=JSON.parse(r.result); if(!S.proj)S.proj={...DEF_PROJ}; if(!S.baggers)S.baggers={...DEF_BAGG}; if(!S.idx)S.idx=SEED_IDX.map(x=>({...x})); if(!S.flows)S.flows=[]; if(!S.snaps)S.snaps=[{f:SEED_DATE,v:82789}]; migrateModel(S); save(); render(); toast("Backup importado ✓"); }catch(err){ toast("Archivo inválido"); } };
   r.readAsText(f);
 };
 $("#btnReset").onclick=()=>{
@@ -1216,6 +1342,7 @@ function fbConnect(cfgStr, key, silent){
         if(!S.proj) S.proj={...DEF_PROJ}; if(!S.baggers) S.baggers={...DEF_BAGG};
         if(!S.idx){ S.idx=SEED_IDX.map(x=>({...x})); }
         if(!S.flows) S.flows=[]; if(!S.snaps) S.snaps=[{f:SEED_DATE,v:82789}];
+        migrateModel(S);
         try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
         fb.ready = true;
         render();
@@ -1252,7 +1379,7 @@ document.querySelectorAll(".tabs button").forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("on"));
     b.classList.add("on");
-    ["cartera","operar","rend","indices","ajustes"].forEach(t=>{
+    ["cartera","operar","rend","ajustes"].forEach(t=>{
       $("#tab-"+t).classList.toggle("hidden", t!==b.dataset.tab);
     });
   };
@@ -1261,7 +1388,8 @@ document.querySelectorAll("#subAn .chip").forEach(c=>{
   c.onclick=()=>{
     document.querySelectorAll("#subAn .chip").forEach(x=>x.classList.remove("on"));
     c.classList.add("on");
-    ["rendimiento","escenarios","baggers","pro","flujo"].forEach(s=>{
+    // "rendimiento" ahora incluye adentro (como <details>) el flujo real y los baggers
+    ["rendimiento","escenarios","pro"].forEach(s=>{
       $("#sec-"+s).classList.toggle("hidden", s!==c.dataset.s);
     });
   };
@@ -1270,6 +1398,8 @@ document.querySelectorAll("#subAn .chip").forEach(c=>{
 /* ================= INIT ================= */
 load();
 $("#opFecha").value = new Date().toISOString().slice(0,10);
+$("#opCcl").value = S.ccl;
+$("#opTipo").dispatchEvent(new Event("change"));
 $("#flFecha").value = new Date().toISOString().slice(0,10);
 if(location.protocol==="https:" || location.protocol==="http:") $("#envNotice").style.display="none";
 render();
