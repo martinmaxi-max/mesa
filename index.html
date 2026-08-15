@@ -235,7 +235,8 @@ textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:
 
     <div class="grid2">
       <div><label>Fecha de la operación</label><input id="opFecha" type="date"/></div>
-      <div><label>CCL de esa fecha (solo si hay pata en ARS)</label><input id="opCcl" type="number" inputmode="decimal" step="any"/></div>
+      <div><label>CCL de esa fecha (solo si hay pata en ARS)</label><input id="opCcl" type="number" inputmode="decimal" step="any"/>
+      <button class="btn mini sec" id="opBuscaCcl" style="margin-top:5px">Buscar CCL de esa fecha</button></div>
     </div>
     <div class="tag">Si estás cargando una operación vieja, poné el CCL de ese día (no el de hoy) para que el costo en dólares quede bien. Si no lo tocás, usa el CCL actual.</div>
     <div class="btnrow"><button class="btn" id="opGo">Registrar</button></div>
@@ -425,10 +426,28 @@ textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:
       <div><select id="edMon"><option value="USD">US$ Dólares</option><option value="ARS">$ Pesos</option></select></div>
     </div>
     <div id="edCclWrap" class="hidden">
+      <label>¿Qué día compraste?</label>
+      <div class="grid2">
+        <div><input id="edFecha" type="date"/></div>
+        <div><button class="btn mini sec" id="edBuscaCcl" style="margin:5px 0 3px">Buscar CCL de ese día</button></div>
+      </div>
       <label>CCL del día de compra</label>
       <input id="edCcl" type="number" inputmode="decimal" step="any"/>
+      <div class="tag" id="edCclInfo" style="margin-top:4px"></div>
       <div class="tag" id="edPreview" style="margin-top:6px;color:var(--gold)"></div>
     </div>
+    <label>Tema / bucket</label>
+    <div class="grid2">
+      <div><select id="edBucket"></select></div>
+      <div><input id="edBucketNew" placeholder="o escribí uno nuevo"/></div>
+    </div>
+    <div class="oplegend" style="margin-top:14px">Niveles de salida (opcional)</div>
+    <div class="tag">Se miden como % sobre tu costo, así que solo funcionan si esta posición tiene el costo cargado y completo. Dejalos vacíos en lo que no pensás tocar hasta 2030.</div>
+    <div class="grid2">
+      <div><label>🔻 Salida / stop (%)</label><input id="edStop" type="number" inputmode="decimal" step="any" placeholder="ej: -35"/></div>
+      <div><label>🎯 Toma de ganancia (%)</label><input id="edTgt" type="number" inputmode="decimal" step="any" placeholder="ej: 150"/></div>
+    </div>
+    <div class="tag" id="edLvlInfo" style="margin-top:4px"></div>
     <div class="btnrow">
       <button class="btn" id="edSave">Guardar</button>
       <button class="btn sec" id="edCancel">Cancelar</button>
@@ -744,6 +763,30 @@ function buildAlerts(){
         : `Va ${usd(z.p.inv-valUSD(z.p))} abajo. Vale la pena revisar si la tesis original sigue en pie o si el mercado te está diciendo algo.`});
   });
 
+  // 7bis) Niveles de salida cruzados o cerca
+  S.positions.filter(p=>p.q>0 && p.inv>0 && uncosted(p)===0 && (p.stopPct!=null || p.tgtPct!=null))
+    .forEach(p=>{
+      const r = (valUSD(p)/p.inv - 1)*100;
+      const ppc = p.inv/p.q;
+      if(p.stopPct!=null){
+        if(r <= p.stopPct){
+          A.push({lvl:"red", ic:"🔻", t:`${p.t} cruzó tu nivel de salida`,
+            x:`Va ${fmt(r,1)}% y vos habías marcado salir en ${fmt(p.stopPct,1)}%. Esto no ejecuta nada: es el recordatorio de la decisión que tomaste cuando estabas tranquilo. Si cambiaste de idea, movelo o borralo, pero hacelo a conciencia.`,
+            act:{lb:"Abrir "+p.t, fn:()=>{goTab("cartera"); setTimeout(()=>editPos(p),250);}}});
+        } else if(r <= p.stopPct + 8){
+          A.push({lvl:"amber", ic:"🔻", t:`${p.t} cerca de tu salida`,
+            x:`Va ${fmt(r,1)}%, tu nivel está en ${fmt(p.stopPct,1)}% (US$${fmt(ppc*(1+p.stopPct/100), ppc<10?4:2)}/u). Si querés que se ejecute solo, cargá el stop en el broker: la app no vende.`});
+        }
+      }
+      if(p.tgtPct!=null){
+        if(r >= p.tgtPct){
+          A.push({lvl:"amber", ic:"🎯", t:`${p.t} llegó a tu objetivo`,
+            x:`Va ${fmt(r,1)}% contra el ${fmt(p.tgtPct,1)}% que te habías puesto. Son ${usd(valUSD(p)-p.inv)} de ganancia sin realizar. Tomás una parte, subís el objetivo, o lo dejás correr: las tres son válidas, pero decidí en vez de dejar que pase.`,
+            act:{lb:"Abrir "+p.t, fn:()=>{goTab("cartera"); setTimeout(()=>editPos(p),250);}}});
+        }
+      }
+    });
+
   // 8) Spread CCL / MEP
   const ccl = (S.idx||[]).find(i=>i.k==="ccl")?.v, mep = (S.idx||[]).find(i=>i.k==="mep")?.v;
   if(ccl && mep && (ccl/mep-1) > 0.025){
@@ -828,11 +871,14 @@ function renderCartera(){
       const invLbl = p.inv!=null
         ? "costo "+usd(p.inv) + (sc>0 ? ` · <span style="color:var(--gold)">⚠ ${fmt(sc, Number.isInteger(sc)?0:2)}u sin costo</span>` : "")
         : "sin costo · tocá para cargar";
+      const lvl = (p.stopPct!=null||p.tgtPct!=null) && p.inv>0
+        ? `<div class="meta" style="color:var(--faint)">${p.stopPct!=null?`🔻 ${fmt(p.stopPct,0)}%`:""}${p.stopPct!=null&&p.tgtPct!=null?" · ":""}${p.tgtPct!=null?`🎯 +${fmt(p.tgtPct,0)}%`:""}</div>` : "";
       row.innerHTML = `
         <div>
           <div class="tk">${p.t}<span class="bkr bk-${p.b}">${BNAME[p.b]}</span></div>
           <div class="meta">${fmt(p.q, p.q<1?4:(Number.isInteger(p.q)?0:2))} u · ${pxLbl}</div>
           <div class="meta" style="color:var(--faint)">${invLbl}${p.name?" · "+p.name:""}</div>
+          ${lvl}
         </div>
         <div class="val">
           <b>${usd(v)}</b>
@@ -856,6 +902,15 @@ function editPos(p){
   $("#edCost").value = p.inv==null ? "" : Math.round(p.inv*100)/100;
   $("#edMon").value="USD";
   $("#edCcl").value=S.ccl;
+  $("#edFecha").value="";
+  $("#edCclInfo").textContent="";
+  $("#edStop").value = p.stopPct!=null ? p.stopPct : "";
+  $("#edTgt").value  = p.tgtPct!=null  ? p.tgtPct  : "";
+  const buckets = [...new Set([...S.positions.map(x=>x.bucket).filter(Boolean),
+    ...Object.keys(S.targets||{}), "IA Core","Espacial","Nuclear/Energía","Cripto","Quantum",
+    "Salud/Robótica","Materiales/Cobre","Defensivo","Core Estable","Otros"])].sort();
+  $("#edBucket").innerHTML = buckets.map(b=>`<option${b===p.bucket?" selected":""}>${b}</option>`).join("");
+  $("#edBucketNew").value = "";
   updEdUI();
   $("#modal").classList.remove("hidden");
 }
@@ -871,11 +926,26 @@ function updEdUI(){
     txt += (txt?" · ":"") + "PPC: US$"+fmt(ppc, ppc<10?4:2)+"/u";
   }
   $("#edPreview").textContent = txt;
+  // vista previa de los niveles
+  const inv = !isNaN(costUSD) && costUSD>0 ? costUSD : (editing ? editing.inv : null);
+  const st = parseFloat($("#edStop").value), tg = parseFloat($("#edTgt").value);
+  let li = "";
+  if(!inv || !(q>0)){
+    if(isFinite(st) || isFinite(tg)) li = "⚠ Sin costo cargado no puedo evaluar estos niveles. Cargá el costo arriba.";
+  } else {
+    const ppc = inv/q;
+    if(isFinite(st)) li += `Salida a US$${fmt(ppc*(1+st/100), ppc<10?4:2)}/u`;
+    if(isFinite(tg)) li += (li?" · ":"") + `Objetivo a US$${fmt(ppc*(1+tg/100), ppc<10?4:2)}/u`;
+    if(isFinite(st) && st>0) li += " ⚠ el stop suele ir en negativo";
+  }
+  $("#edLvlInfo").textContent = li;
 }
 $("#edMon").onchange=updEdUI;
 $("#edCost").oninput=updEdUI;
 $("#edCcl").oninput=updEdUI;
 $("#edQty").oninput=updEdUI;
+$("#edStop").oninput=updEdUI;
+$("#edTgt").oninput=updEdUI;
 $("#edCancel").onclick=()=>{ $("#modal").classList.add("hidden"); editing=null; };
 $("#modal").addEventListener("click",e=>{ if(e.target.id==="modal"){ $("#modal").classList.add("hidden"); editing=null; } });
 $("#edSave").onclick=()=>{
@@ -883,6 +953,11 @@ $("#edSave").onclick=()=>{
   const q=parseFloat($("#edQty").value), px=parseFloat($("#edPx").value);
   if(isNaN(q)||q<0||isNaN(px)||px<=0){ toast("Cantidad o precio inválido"); return; }
   editing.q=q; editing.px=px;
+  const stV=parseFloat($("#edStop").value), tgV=parseFloat($("#edTgt").value);
+  editing.stopPct = isFinite(stV) ? stV : null;
+  editing.tgtPct  = isFinite(tgV) ? tgV : null;
+  const bkNew = $("#edBucketNew").value.trim();
+  editing.bucket = bkNew || $("#edBucket").value || editing.bucket || "Otros";
   const cRaw=$("#edCost").value.trim();
   // Esta edición manual reemplaza todo el historial de lotes por UNO solo (reconciliación).
   // Si venís cargando compras/ventas desde "Operar", mejor no toques esto: se arma solo por FIFO.
@@ -1336,7 +1411,7 @@ function findOrCreatePos(t,b,assetType){
     const isCry = assetType==="cry" || (b==="Binance" && !assetType);
     const type = assetType || (isCry?"cry":(b==="InvestorTrust"?"fund":"ced"));
     pos={id:"u"+Date.now()+Math.random().toString(36).slice(2,6), t, b, type,
-         q:0, px:0, cur:"USD", inv:null, lots:[], bucket: type==="cry"?"Cripto":"Otros"};
+         q:0, px:0, cur:"USD", inv:null, lots:[], bucket: BUCKET_HINT[t] || (type==="cry"?"Cripto":(type==="fund"?"Core Estable":"Otros"))};
     if(type==="cry" && CG_MAP[t]) pos.cg = CG_MAP[t];
     S.positions.push(pos);
   }
@@ -1467,7 +1542,14 @@ const BUCKET_HINT = {
   SMR:"Nuclear/Energía", LEU:"Nuclear/Energía", CCJ:"Nuclear/Energía", NNE:"Nuclear/Energía",
   IBIT:"Cripto", IREN:"Cripto", MARA:"Cripto", RIOT:"Cripto", COIN:"Cripto", MSTR:"Cripto",
   RGTI:"Quantum", IONQ:"Quantum", QBTS:"Quantum",
-  ISRG:"Salud/Robótica", TMDX:"Salud/Robótica"
+  ISRG:"Salud/Robótica", TMDX:"Salud/Robótica", UNH:"Salud/Robótica", JNJ:"Salud/Robótica",
+  LLY:"Salud/Robótica", ABBV:"Salud/Robótica", VRTX:"Salud/Robótica",
+  COPX:"Materiales/Cobre", SCCO:"Materiales/Cobre", FCX:"Materiales/Cobre", TECK:"Materiales/Cobre",
+  RIO:"Materiales/Cobre", BHP:"Materiales/Cobre", VALE:"Materiales/Cobre",
+  KO:"Defensivo", PG:"Defensivo", PEP:"Defensivo", COST:"Defensivo", WMT:"Defensivo",
+  MCD:"Defensivo", XOM:"Defensivo", CVX:"Defensivo", BRKB:"Defensivo", JPM:"Defensivo",
+  SPY:"Core Estable", IVV:"Core Estable", VOO:"Core Estable", QQQ:"Core Estable",
+  DIA:"Core Estable", EEM:"Core Estable", ILF:"Core Estable", GLD:"Core Estable"
 };
 function resolveTicker(sym){
   const s = String(sym||"").toUpperCase().trim().replace(/[^A-Z0-9.]/g,"");
@@ -1666,6 +1748,46 @@ $("#tgtNow").onclick = ()=>{
   save(); render(); toast("Objetivos = tu cartera de hoy. Ajustá lo que quieras mover.");
 };
 $("#tgtOff").onclick = ()=>{ if(!confirm("¿Borrar los objetivos y dejar de recibir avisos por desvío?")) return; S.targets=null; save(); render(); toast("Objetivos desactivados"); };
+
+/* ================= CCL HISTÓRICO =================
+   Trae el contado con liqui de una fecha puntual. Si ese día el mercado estuvo
+   cerrado (finde o feriado) retrocede hasta 6 días hábiles hasta encontrar dato. */
+async function cclDeFecha(iso){
+  const d0 = new Date(iso + "T12:00:00");
+  if(isNaN(d0)) throw new Error("fecha inválida");
+  for(let i=0; i<7; i++){
+    const d = new Date(d0); d.setDate(d.getDate()-i);
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), dd = String(d.getDate()).padStart(2,"0");
+    try{
+      const r = await fetchJSON(`https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui/${y}/${m}/${dd}`);
+      const v = r && (r.venta || r.compra);
+      if(v) return {ccl: Number(v), fecha: `${dd}/${m}/${y}`, atrasado: i};
+    }catch(e){}
+  }
+  throw new Error("sin dato");
+}
+async function buscarCcl(inputFecha, inputCcl, infoEl, btn){
+  const iso = $(inputFecha).value;
+  if(!iso){ toast("Elegí primero la fecha de compra"); return; }
+  const b = $(btn); const lbl = b.textContent;
+  b.textContent = "Buscando…"; b.disabled = true;
+  if(infoEl) $(infoEl).textContent = "";
+  try{
+    const r = await cclDeFecha(iso);
+    $(inputCcl).value = Math.round(r.ccl*100)/100;
+    if(infoEl) $(infoEl).innerHTML = r.atrasado
+      ? `CCL $${fmt(r.ccl,0)} del ${r.fecha} — ese día no hubo rueda, uso el cierre hábil anterior.`
+      : `CCL $${fmt(r.ccl,0)} del ${r.fecha} ✓`;
+    $(inputCcl).dispatchEvent(new Event("input"));
+    toast("CCL histórico: $"+fmt(r.ccl,0));
+  }catch(e){
+    if(infoEl) $(infoEl).textContent = "No pude traer el CCL de esa fecha. Cargalo a mano si lo tenés, o dejá el actual.";
+    toast("No encontré el CCL de esa fecha");
+  }
+  b.textContent = lbl; b.disabled = false;
+}
+$("#edBuscaCcl").onclick = ()=>buscarCcl("#edFecha", "#edCcl", "#edCclInfo", "#edBuscaCcl");
+$("#opBuscaCcl").onclick = ()=>buscarCcl("#opFecha", "#opCcl", null, "#opBuscaCcl");
 
 /* ================= CAJA (CASH) ================= */
 $("#btnCash").onclick = ()=>{
