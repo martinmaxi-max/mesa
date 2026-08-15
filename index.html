@@ -120,6 +120,33 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 .acc[open] summary .car{transform:rotate(90deg)}
 .acc .accbody{padding:0 12px 12px}
 .oplegend{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:12px 0 4px}
+
+/* ---- HOME / SEMÁFORO ---- */
+.hero{background:linear-gradient(160deg,var(--panel) 0%,var(--panel2) 100%);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+.hero .saludo{font-size:.92rem;color:var(--dim);margin-bottom:8px}
+.hero .saludo b{color:var(--txt)}
+.hero .delta{font-size:1.5rem;font-weight:700;letter-spacing:-.02em}
+.hero .deltasub{font-size:.75rem;color:var(--faint);margin-top:2px}
+.alert{display:flex;gap:11px;align-items:flex-start;padding:13px;border-radius:14px;margin-bottom:9px;border:1px solid var(--line);background:var(--panel)}
+.alert .ic{font-size:1.15rem;line-height:1.2;flex:0 0 auto}
+.alert .bd{flex:1;min-width:0}
+.alert .t{font-weight:650;font-size:.87rem;margin-bottom:3px}
+.alert .x{font-size:.79rem;color:var(--dim);line-height:1.45}
+.alert.red{border-color:rgba(240,100,122,.45);background:rgba(240,100,122,.07)}
+.alert.amber{border-color:rgba(232,182,107,.42);background:rgba(232,182,107,.06)}
+.alert.green{border-color:rgba(62,207,142,.35);background:rgba(62,207,142,.06)}
+.alert .go{margin-top:8px;font-size:.74rem;padding:6px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--gold);cursor:pointer;font-weight:600}
+.tgtrow{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line)}
+.tgtrow:last-child{border-bottom:none}
+.tgtrow .nm{flex:1;font-size:.82rem}
+.tgtrow .ac{font-size:.72rem;color:var(--dim);min-width:44px;text-align:right}
+.tgtrow input{width:66px;margin:0;padding:7px 8px;text-align:center}
+.bar{height:5px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:var(--gold);border-radius:3px}
+.diffrow{display:flex;justify-content:space-between;font-size:.76rem;padding:5px 0;border-bottom:1px solid var(--line)}
+.diffrow:last-child{border-bottom:none}
+.diffrow .lb{color:var(--dim)}
+textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:11px;padding:11px;font-size:.8rem;font-family:ui-monospace,Menlo,monospace;margin:5px 0 3px;min-height:110px;resize:vertical}
 </style>
 </head>
 <body>
@@ -141,8 +168,22 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 
 <div class="chips" id="chips"></div>
 
+<!-- ============ TAB INICIO ============ -->
+<div id="tab-home">
+  <div class="hero">
+    <div class="saludo" id="hSaludo">—</div>
+    <div class="delta" id="hDelta">—</div>
+    <div class="deltasub" id="hDeltaSub"></div>
+  </div>
+  <div id="semaforo"></div>
+  <div class="btnrow" style="margin-top:4px">
+    <button class="btn sec mini" id="hGoUpd">↻ Traer precios de hoy</button>
+    <button class="btn sec mini" id="hGoCart">Ver cartera</button>
+  </div>
+</div>
+
 <!-- ============ TAB CARTERA ============ -->
-<div id="tab-cartera">
+<div id="tab-cartera" class="hidden">
   <button class="btn" id="btnUpdate">↻ Actualizar todo (precios, dólar, índices)</button>
   <div class="btnrow"><button class="btn sec mini" id="btnCash">💵 Registrar / ajustar caja (efectivo USD)</button></div>
   <div class="notice" id="envNotice" style="margin-top:8px">
@@ -308,6 +349,35 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 <!-- ============ TAB AJUSTES ============ -->
 <div id="tab-ajustes" class="hidden">
   <div class="card">
+    <div style="font-weight:700;margin-bottom:2px">🔄 Sincronizar con IOL</div>
+    <div class="tag">Pegá la foto de tu cartera de IOL y la app reconcilia sola: actualiza precios, ajusta cantidades y conserva el costo de lo que ya tenías. Nada se aplica hasta que veas el diff y confirmes.<br><br>Sirven tres formatos: el JSON que te paso desde el chat, un JSON de la API, o texto plano una línea por posición → <b>NVDA 214 12730</b> (ticker, cantidad, precio en ARS).</div>
+    <textarea id="iolPaste" placeholder="NVDA 214 12730&#10;OKLO 156 2910&#10;ASTS 95 8830"></textarea>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.78rem;color:var(--txt)">
+      <input type="checkbox" id="iolFull" style="width:auto;margin:0"/>
+      Es la cartera <b>completa</b> de IOL
+    </label>
+    <div class="tag" style="margin-top:2px">Dejalo destildado si pegaste solo algunas posiciones: así lo que no aparezca en la lista queda como está, en vez de marcarse como vendido.</div>
+    <div class="btnrow">
+      <button class="btn mini" id="iolPlan">Ver diferencias</button>
+      <button class="btn mini sec" id="iolClear">Limpiar</button>
+    </div>
+    <div id="iolDiff" style="margin-top:10px"></div>
+    <div class="tag" id="iolLast" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <div style="font-weight:700;margin-bottom:2px">🎯 Objetivos de cartera</div>
+    <div class="tag">Cuánto querés que pese cada tema. Es la referencia contra la que la pantalla de inicio te avisa si algo se te fue de escala. La columna gris es tu peso real de hoy.</div>
+    <div id="tgtList" style="margin-top:8px"></div>
+    <div class="tag" id="tgtSum" style="margin-top:6px"></div>
+    <label>Tolerancia antes de avisar (puntos porcentuales)</label>
+    <input id="tgtTol" type="number" inputmode="decimal" step="any" placeholder="5"/>
+    <div class="btnrow">
+      <button class="btn mini" id="tgtSave">Guardar objetivos</button>
+      <button class="btn mini sec" id="tgtNow">Usar mi cartera de hoy</button>
+      <button class="btn mini sec" id="tgtOff">Desactivar</button>
+    </div>
+  </div>
+  <div class="card">
     <div style="font-weight:700;margin-bottom:2px">☁️ Sync en la nube (Firebase)</div>
     <div class="tag">Pegá la config web de tu proyecto de Firebase y elegí una clave. Conectando todos tus dispositivos con la misma clave, cada operación que registres se sincroniza sola en todos lados.</div>
     <label>Config del proyecto</label>
@@ -367,7 +437,8 @@ label{font-size:.68rem;color:var(--dim);letter-spacing:.06em;text-transform:uppe
 </div>
 
 <div class="tabs">
-  <button data-tab="cartera" class="on"><span>💼</span>Cartera</button>
+  <button data-tab="home" class="on"><span>👋</span>Inicio</button>
+  <button data-tab="cartera"><span>💼</span>Cartera</button>
   <button data-tab="operar"><span>✍️</span>Operar</button>
   <button data-tab="rend"><span>📊</span>Análisis</button>
   <button data-tab="ajustes"><span>⚙️</span>Ajustes</button>
@@ -468,7 +539,8 @@ function freshState(){
     ops: [], closed: [],
     flows: [], snaps: [{f:SEED_DATE, v:82789}],
     proj: {...DEF_PROJ}, baggers: {...DEF_BAGG},
-    idx: SEED_IDX.map(x=>({...x})), idxTs: SEED_DATE + " (foto inicial)"
+    idx: SEED_IDX.map(x=>({...x})), idxTs: SEED_DATE + " (foto inicial)",
+    targets: null, tol: 5, lastVisit: null, lastSyncIOL: null
   };
   migrateModel(st);
   return st;
@@ -488,6 +560,10 @@ function load(){
       if(!S.idx){ S.idx = SEED_IDX.map(x=>({...x})); S.idxTs = SEED_DATE; }
       if(!S.flows) S.flows = [];
       if(!S.snaps) S.snaps = [{f:SEED_DATE, v:82789}];
+      if(S.targets === undefined) S.targets = null;
+      if(S.tol == null) S.tol = 5;
+      if(S.lastVisit === undefined) S.lastVisit = null;
+      if(S.lastSyncIOL === undefined) S.lastSyncIOL = null;
       migrateModel(S);
       return;
     }
@@ -539,6 +615,9 @@ function render(){
   mk("Todos","Todos",tot);
   BROKERS.forEach(b=>mk(b,BNAME[b],perB[b]));
 
+  renderHome();
+  renderTargets();
+  renderIolLast();
   renderCartera();
   renderOps();
   renderRend();
@@ -551,6 +630,170 @@ function render(){
   $("#cclInput").value = S.ccl;
   // datalist
   $("#tickList").innerHTML = [...new Set(S.positions.map(p=>p.t))].map(t=>`<option value="${t}">`).join("");
+}
+
+/* ================= INICIO — semáforo =================
+   La idea: entrás una vez por mes y en 10 segundos sabés si hay algo que hacer.
+   Solo se muestra lo que amerita. Si no hay nada, lo dice y listo. */
+let visitPrev = null;
+function touchVisit(tot){
+  const now = Date.now();
+  const lv = S.lastVisit;
+  visitPrev = (lv && lv.ts) ? {...lv} : null;
+  if(!lv || !lv.ts || now - lv.ts > 6*3600*1000){
+    S.lastVisit = {ts: now, v: tot};
+    try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
+  }
+}
+const goTab = t => { const b=document.querySelector('.tabs button[data-tab="'+t+'"]'); if(b) b.click(); window.scrollTo(0,0); };
+function buildAlerts(){
+  const A = [];
+  const {tot} = totals();
+  const {m} = bucketMix();
+  const hoy = new Date();
+  const nq = n => fmt(n, Number.isInteger(n)?0:2);
+
+  // 1) ¿Los precios están viejos?
+  const diasUpd = S.lastUpdTs ? Math.floor((Date.now()-S.lastUpdTs)/86400000) : null;
+  if(diasUpd === null){
+    A.push({lvl:"amber", ic:"⏱", t:"Traé los precios de hoy",
+      x:"Los números que ves vienen de la última foto cargada, no del mercado en vivo. Tocá actualizar y se resuelve en cinco segundos.",
+      act:{lb:"Actualizar ahora", fn:()=>$("#btnUpdate").click()}});
+  } else if(diasUpd >= 5){
+    A.push({lvl:"amber", ic:"⏱", t:`Precios de hace ${diasUpd} días`,
+      x:"Todo lo que estás mirando abajo está calculado con precios viejos. Actualizá antes de tomar cualquier decisión.",
+      act:{lb:"Actualizar ahora", fn:()=>$("#btnUpdate").click()}});
+  }
+
+  // 2) Desvío contra objetivos
+  if(S.targets && tot>0){
+    const tol = S.tol!=null ? S.tol : 5;
+    const desv = [];
+    Object.entries(S.targets).forEach(([bk,tgt])=>{
+      const act = (m[bk]||0)/tot*100;
+      const d = act - Number(tgt);
+      if(Math.abs(d) >= tol) desv.push({bk, act, tgt:Number(tgt), d});
+    });
+    desv.sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+    desv.slice(0,4).forEach(z=>{
+      const fuerte = Math.abs(z.d) >= tol*2;
+      const arriba = z.d > 0;
+      A.push({lvl: fuerte?"red":"amber", ic: arriba?"📈":"📉",
+        t:`${z.bk}: ${fmt(z.act,1)}% (querías ${fmt(z.tgt,1)}%)`,
+        x: arriba
+          ? `Te quedaste ${fmt(z.d,1)} puntos por encima. Son unos ${usd(Math.abs(z.d)/100*tot)} de más en este tema — o vendés una parte, o simplemente mandás los próximos aportes a otro lado.`
+          : `Te quedaste ${fmt(-z.d,1)} puntos por debajo. Faltan unos ${usd(Math.abs(z.d)/100*tot)} para volver a tu objetivo: buen destino para el aporte de este mes.`,
+        act:{lb:"Ver cartera", fn:()=>goTab("cartera")}});
+    });
+  } else {
+    A.push({lvl:"info", ic:"🎯", t:"Todavía no definiste tus objetivos",
+      x:"Sin objetivos no tengo contra qué comparar, así que no te puedo avisar cuando algo se te va de escala. Se cargan una sola vez y quedan.",
+      act:{lb:"Definir objetivos", fn:()=>goTab("ajustes")}});
+  }
+
+  // 3) Concentración en una sola posición
+  if(tot>0){
+    const gordas = S.positions.filter(p=>p.q>0 && p.type!=="cash" && valUSD(p)/tot > 0.15)
+      .sort((a,b)=>valUSD(b)-valUSD(a));
+    gordas.slice(0,2).forEach(p=>{
+      const pct = valUSD(p)/tot*100;
+      A.push({lvl: pct>25?"red":"amber", ic:"⚖️",
+        t:`${p.t} es el ${fmt(pct,1)}% de todo`,
+        x:`Un solo papel decidiendo esa porción de tu patrimonio es mucho, incluso con tolerancia alta al riesgo. No digo que la vendas: digo que lo sepas.`,
+        act:{lb:"Ver posición", fn:()=>{goTab("cartera"); setTimeout(()=>editPos(p),250);}}});
+    });
+  }
+
+  // 4) Caja parada
+  const caja = S.positions.filter(p=>p.type==="cash" && p.q>0).reduce((s,p)=>s+valUSD(p),0);
+  if(tot>0 && caja/tot > 0.04){
+    A.push({lvl:"amber", ic:"💵", t:`${usd(caja)} sin invertir`,
+      x:`Es el ${fmt(caja/tot*100,1)}% de tu patrimonio quieto. Con horizonte 2030-2035 la caja parada rinde cero y encima se la come la inflación del dólar.`,
+      act:{lb:"Registrar compra", fn:()=>goTab("operar")}});
+  }
+
+  // 5) Posiciones sin costo cargado
+  const sinCosto = S.positions.filter(p=>p.q>0 && p.type!=="cash" && (p.inv==null || uncosted(p)>0));
+  if(sinCosto.length){
+    const lista = sinCosto.slice(0,6).map(p=>p.t).join(", ") + (sinCosto.length>6 ? " y "+(sinCosto.length-6)+" más" : "");
+    A.push({lvl:"info", ic:"🧾", t:`${sinCosto.length} posiciones sin costo cargado`,
+      x:`En ${lista} no sé a cuánto compraste, así que no puedo decirte si ganás o perdés ahí. Tocá cada una en Cartera y cargá el precio de compra (podés poner ARS + el CCL de ese día).`,
+      act:{lb:"Ir a cartera", fn:()=>goTab("cartera")}});
+  }
+
+  // 6) Aporte del mes
+  const ym = hoy.toISOString().slice(0,7);
+  const aporteMes = (S.flows||[]).some(f=>f.tipo==="aporte" && String(f.fecha||"").slice(0,7)===ym);
+  if(!aporteMes && hoy.getDate() >= 5){
+    A.push({lvl:"info", ic:"📅", t:"No registraste el aporte de este mes",
+      x:`Tu plan son US$ ${fmt(S.proj?.ap||2500,0)} por mes. Si ya lo hiciste, registralo para que el cálculo de rendimiento no se ensucie; si no, este es el recordatorio.`,
+      act:{lb:"Registrar flujo", fn:()=>goTab("rend")}});
+  }
+
+  // 7) Movimientos fuertes desde tu costo
+  const movidas = S.positions.filter(p=>p.q>0 && p.inv>0 && uncosted(p)===0)
+    .map(p=>({p, r: valUSD(p)/p.inv-1}))
+    .filter(z=>Math.abs(z.r) >= 0.6)
+    .sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
+  movidas.slice(0,2).forEach(z=>{
+    const sube = z.r>0;
+    A.push({lvl:"info", ic: sube?"🚀":"🩸",
+      t:`${z.p.t} ${sube?"+":""}${fmt(z.r*100,0)}% sobre tu costo`,
+      x: sube
+        ? `Va ${usd(valUSD(z.p)-z.p.inv)} arriba. Con tesis larga no hay nada que hacer, pero si querés tomar una parte, este es el candidato.`
+        : `Va ${usd(z.p.inv-valUSD(z.p))} abajo. Vale la pena revisar si la tesis original sigue en pie o si el mercado te está diciendo algo.`});
+  });
+
+  // 8) Spread CCL / MEP
+  const ccl = (S.idx||[]).find(i=>i.k==="ccl")?.v, mep = (S.idx||[]).find(i=>i.k==="mep")?.v;
+  if(ccl && mep && (ccl/mep-1) > 0.025){
+    A.push({lvl:"info", ic:"💱", t:`CCL ${fmt((ccl/mep-1)*100,1)}% arriba del MEP`,
+      x:`Si vas a meter pesos a CEDEARs este mes, entrar por MEP te está dando más dólares por el mismo peso.`});
+  }
+
+  return A;
+}
+function renderHome(){
+  const {tot} = totals();
+  const h = new Date().getHours();
+  const saludo = h<13 ? "Buen día" : (h<20 ? "Buenas tardes" : "Buenas noches");
+  $("#hSaludo").innerHTML = `${saludo}, <b>Maxi</b>. Tenés <b>${usd(tot)}</b> repartidos en cuatro brokers.`;
+
+  if(visitPrev && visitPrev.v){
+    const d = tot - visitPrev.v;
+    const pct = visitPrev.v ? d/visitPrev.v*100 : 0;
+    const dias = Math.max(0, Math.round((Date.now()-visitPrev.ts)/86400000));
+    const cls = d>=0 ? "pos" : "neg";
+    $("#hDelta").innerHTML = `<span class="${cls}">${d>=0?"+":"−"}${usd(Math.abs(d)).replace("US$ ","US$ ")}</span> <small style="font-size:.95rem;color:var(--dim)">(${d>=0?"+":""}${fmt(pct,1)}%)</small>`;
+    $("#hDeltaSub").textContent = dias===0 ? "desde que entraste hoy más temprano"
+      : dias===1 ? "desde ayer" : `desde tu última visita, hace ${dias} días`;
+  } else {
+    $("#hDelta").innerHTML = `<span style="color:var(--dim);font-size:1rem">Primera visita registrada</span>`;
+    $("#hDeltaSub").textContent = "La próxima vez que entres te muestro cuánto se movió.";
+  }
+
+  const box = $("#semaforo"); box.innerHTML = "";
+  const A = buildAlerts();
+  const orden = {red:0, amber:1, info:2};
+  A.sort((a,b)=>orden[a.lvl]-orden[b.lvl]);
+  if(!A.length){
+    box.innerHTML = `<div class="alert green"><div class="ic">✅</div><div class="bd">
+      <div class="t">Está todo en orden</div>
+      <div class="x">Nada que necesite tu atención hoy. Tu cartera está alineada con lo que definiste. Nos vemos el mes que viene.</div></div></div>`;
+    return;
+  }
+  A.forEach(a=>{
+    const el = document.createElement("div");
+    el.className = "alert " + (a.lvl==="info" ? "" : a.lvl);
+    el.innerHTML = `<div class="ic">${a.ic}</div><div class="bd">
+      <div class="t">${a.t}</div><div class="x">${a.x}</div></div>`;
+    if(a.act){
+      const b = document.createElement("button");
+      b.className="go"; b.textContent=a.act.lb; b.onclick=a.act.fn;
+      el.querySelector(".bd").appendChild(b);
+    }
+    box.appendChild(el);
+  });
 }
 
 function renderCartera(){
@@ -581,7 +824,10 @@ function renderCartera(){
         card.appendChild(row); return;
       }
       const pxLbl = p.cur==="ARS" ? "$"+fmt(p.px,p.px<100?2:0)+" ARS" : "US$"+fmt(p.px,2);
-      const invLbl = p.inv!=null ? "costo "+usd(p.inv) : "sin costo · tocá para cargar";
+      const sc = uncosted(p);
+      const invLbl = p.inv!=null
+        ? "costo "+usd(p.inv) + (sc>0 ? ` · <span style="color:var(--gold)">⚠ ${fmt(sc, Number.isInteger(sc)?0:2)}u sin costo</span>` : "")
+        : "sin costo · tocá para cargar";
       row.innerHTML = `
         <div>
           <div class="tk">${p.t}<span class="bkr bk-${p.b}">${BNAME[p.b]}</span></div>
@@ -1198,6 +1444,229 @@ async function fetchJSON(url){
     return await r.json();
   }
 }
+/* ================= SYNC IOL — motor de reconciliación =================
+   Toma una foto de la cartera de IOL y la funde contra el estado guardado.
+   Reglas:
+   - El ticker manda: los CEDEARs en BCBA a veces llegan con sufijo "D" (PLTRD → PLTR).
+     Solo se recorta la D si el ticker sin D ya existe en la cartera (así AMD nunca se rompe).
+   - Si la cantidad SUBE: se conserva el costo de los lotes viejos y las unidades nuevas
+     quedan marcadas "sin costo" (no inventamos un precio de compra).
+   - Si la cantidad BAJA: primero se descuentan las unidades sin costo (no pierden información)
+     y recién después se recortan los lotes por FIFO, del más viejo al más nuevo.
+   - Si una posición de IOL ya no aparece en la foto, se marca en cero (no se borra).
+   - Nunca se aplica nada sin que veas el diff y confirmes. */
+const lotQty = p => (p.lots||[]).reduce((s,l)=>s+l.q,0);
+const uncosted = p => Math.max(0, (p.q||0) - lotQty(p));
+const KEEP_D = new Set(["AMD","GILD","BIDU","SID","NVD","MND","D"]);
+const BUCKET_HINT = {
+  NVDA:"IA Core", AMD:"IA Core", TSM:"IA Core", ASML:"IA Core", AVGO:"IA Core", MU:"IA Core",
+  MSFT:"IA Core", META:"IA Core", AMZN:"IA Core", GOOGL:"IA Core", PLTR:"IA Core", NOW:"IA Core",
+  CRWD:"IA Core", SMCI:"IA Core", ARM:"IA Core", QCOM:"IA Core", INTC:"IA Core", TSLA:"IA Core",
+  ASTS:"Espacial", RKLB:"Espacial", LUNR:"Espacial", PL:"Espacial",
+  OKLO:"Nuclear/Energía", VST:"Nuclear/Energía", CEG:"Nuclear/Energía", URA:"Nuclear/Energía",
+  SMR:"Nuclear/Energía", LEU:"Nuclear/Energía", CCJ:"Nuclear/Energía", NNE:"Nuclear/Energía",
+  IBIT:"Cripto", IREN:"Cripto", MARA:"Cripto", RIOT:"Cripto", COIN:"Cripto", MSTR:"Cripto",
+  RGTI:"Quantum", IONQ:"Quantum", QBTS:"Quantum",
+  ISRG:"Salud/Robótica", TMDX:"Salud/Robótica"
+};
+function resolveTicker(sym){
+  const s = String(sym||"").toUpperCase().trim().replace(/[^A-Z0-9.]/g,"");
+  if(!s) return "";
+  const known = new Set(S.positions.map(p=>p.t));
+  if(known.has(s)) return s;
+  if(!KEEP_D.has(s) && s.length>2 && s.endsWith("D") && known.has(s.slice(0,-1))) return s.slice(0,-1);
+  return s;
+}
+/* Descuenta `qty` unidades: primero las sin costo, después lotes por FIFO.
+   Devuelve el costo USD que se retiró (para dejar constancia). */
+function trimLots(p, qty){
+  let rest = qty, out = 0;
+  const sinCosto = uncosted(p);
+  rest -= Math.min(rest, sinCosto);
+  p.lots = p.lots || [];
+  while(rest > 1e-9 && p.lots.length){
+    const l = p.lots[0];
+    if(l.q <= rest + 1e-9){ out += l.costUSD; rest -= l.q; p.lots.shift(); }
+    else { const frac = rest / l.q; out += l.costUSD*frac; l.costUSD -= l.costUSD*frac; l.q -= rest; rest = 0; }
+  }
+  invRecalc(p);
+  return out;
+}
+/* Parser flexible: acepta el JSON crudo del MCP de IOL, un array simple,
+   o texto plano tipo "NVDA 214 12730" (una línea por posición). */
+function parseIOLSnapshot(raw){
+  const txt = String(raw||"").trim();
+  if(!txt) return [];
+  let data = null;
+  try{ data = JSON.parse(txt); }catch(e){}
+  if(data){
+    let arr = Array.isArray(data) ? data
+            : (data.activos || data.positions || data.holdings || data.items || data.data || null);
+    if(!Array.isArray(arr)) arr = [data];
+    return arr.map(o=>{
+      const tt = o.titulo || o.security || o;
+      return {
+        sym: tt.simbolo || tt.symbol || o.simbolo || o.symbol || o.ticker || o.t,
+        q:   Number(o.cantidad ?? o.quantity ?? o.qty ?? o.q ?? tt.cantidad),
+        px:  Number(o.ultimoPrecio ?? o.precioActual ?? o.precio ?? o.price ?? o.px ?? tt.ultimoPrecio),
+        cur: (o.moneda || o.currency || "ARS").toString().toUpperCase().includes("DOLAR") ? "USD" : "ARS"
+      };
+    }).filter(x=>x.sym && isFinite(x.q));
+  }
+  // texto plano
+  return txt.split(/\n+/).map(line=>{
+    const parts = line.trim().split(/[\s,;\t]+/).filter(Boolean);
+    if(parts.length < 2) return null;
+    const sym = parts[0];
+    const q  = parseFloat(String(parts[1]).replace(/\./g,"").replace(",","."));
+    const px = parts[2] != null ? parseFloat(String(parts[2]).replace(/\./g,"").replace(",",".")) : NaN;
+    if(!sym || !isFinite(q)) return null;
+    return {sym, q, px: isFinite(px)?px:null, cur:"ARS"};
+  }).filter(Boolean);
+}
+/* Calcula el diff sin tocar nada. Devuelve {plan:[], resumen:{}} */
+function planIOL(snap, full){
+  const plan = []; const seen = new Set();
+  snap.forEach(row=>{
+    const t = resolveTicker(row.sym);
+    if(!t) return;
+    seen.add(t);
+    const p = S.positions.find(x=>x.b==="IOL" && x.t===t && x.type!=="cash");
+    const q1 = row.q;
+    if(!p){ plan.push({acc:"nueva", t, q0:0, q1, px:row.px, cur:row.cur}); return; }
+    const q0 = p.q||0;
+    if(Math.abs(q1-q0) < 1e-9) plan.push({acc:"igual", t, q0, q1, px:row.px, cur:row.cur, p});
+    else if(q1 > q0)          plan.push({acc:"suma",  t, q0, q1, px:row.px, cur:row.cur, p, nuevas:q1-q0});
+    else                      plan.push({acc:"resta", t, q0, q1, px:row.px, cur:row.cur, p, menos:q0-q1});
+  });
+  if(full){
+    S.positions.filter(p=>p.b==="IOL" && p.q>0 && p.type!=="cash" && !seen.has(p.t))
+      .forEach(p=>plan.push({acc:"cierra", t:p.t, q0:p.q, q1:0, p}));
+  }
+  const resumen = {nueva:0, suma:0, resta:0, igual:0, cierra:0};
+  plan.forEach(x=>resumen[x.acc]++);
+  return {plan, resumen};
+}
+/* Aplica el plan ya confirmado. */
+function applyIOL(plan){
+  const rep = {sinCosto:[], cerradas:[], nuevas:[]};
+  plan.forEach(x=>{
+    if(x.acc==="nueva"){
+      const p = {
+        id:"iol"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+        t:x.t, b:"IOL", type:"ced", q:x.q1, px:x.px||0, cur:x.cur||"ARS",
+        inv:null, lots:[], bucket: BUCKET_HINT[x.t] || "Otros"
+      };
+      S.positions.push(p);
+      rep.nuevas.push(x.t); rep.sinCosto.push(x.t);
+      return;
+    }
+    const p = x.p; if(!p) return;
+    if(x.px && isFinite(x.px) && x.px>0){ p.px = x.px; if(x.cur) p.cur = x.cur; }
+    if(x.acc==="suma"){ p.q = x.q1; if(uncosted(p)>0) rep.sinCosto.push(x.t); }
+    else if(x.acc==="resta"){ trimLots(p, x.menos); p.q = x.q1; }
+    else if(x.acc==="cierra"){ trimLots(p, p.q); p.q = 0; rep.cerradas.push(x.t); }
+    invRecalc(p);
+  });
+  S.lastSyncIOL = new Date().toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+  save(); render();
+  return rep;
+}
+
+/* ---- UI del sync IOL ---- */
+let planPend = null;
+function renderIolLast(){
+  $("#iolLast").textContent = S.lastSyncIOL ? "Última sincronización con IOL: " + S.lastSyncIOL : "Todavía no sincronizaste con IOL.";
+}
+$("#iolClear").onclick = ()=>{ $("#iolPaste").value=""; $("#iolDiff").innerHTML=""; planPend=null; };
+$("#iolPlan").onclick = ()=>{
+  const snap = parseIOLSnapshot($("#iolPaste").value);
+  if(!snap.length){ toast("No pude leer ninguna posición"); return; }
+  const full = $("#iolFull").checked;
+  const {plan, resumen} = planIOL(snap, full);
+  planPend = plan;
+  const nq = n => fmt(n, Number.isInteger(n)?0:2);
+  const filas = plan.filter(x=>x.acc!=="igual").map(x=>{
+    const et = {nueva:"🆕 nueva", suma:"➕ suma", resta:"➖ baja", cierra:"⬜ cierra"}[x.acc];
+    const det = x.acc==="nueva" ? nq(x.q1)+"u (sin costo)"
+              : x.acc==="cierra" ? nq(x.q0)+"u → 0"
+              : nq(x.q0)+"u → "+nq(x.q1)+"u";
+    return `<div class="diffrow"><span class="lb">${et} · <b style="color:var(--txt)">${x.t}</b></span><span>${det}</span></div>`;
+  }).join("");
+  const igual = resumen.igual;
+  $("#iolDiff").innerHTML = `
+    <div class="card" style="background:var(--panel2);margin:0">
+      ${filas || '<div class="tag">Las cantidades coinciden con lo que ya tenías.</div>'}
+      ${igual ? `<div class="diffrow"><span class="lb">✓ sin cambios</span><span>${igual} posiciones</span></div>` : ""}
+      ${resumen.cierra ? `<div class="tag" style="margin-top:8px;color:var(--down)">⚠️ ${resumen.cierra} posiciones van a quedar en cero porque no aparecen en la lista que pegaste. Si pegaste solo una parte de tu cartera, destildá la casilla y volvé a calcular.</div>` : ""}
+      <div class="tag" style="margin-top:8px">Los precios de todas las posiciones de la foto se actualizan igual. Las unidades que suman quedan marcadas sin costo hasta que las cargues a mano.</div>
+      <div class="btnrow"><button class="btn mini" id="iolApply">Aplicar estos cambios</button></div>
+    </div>`;
+  $("#iolApply").onclick = ()=>{
+    if(!planPend) return;
+    const rep = applyIOL(planPend);
+    planPend = null;
+    $("#iolPaste").value=""; $("#iolDiff").innerHTML="";
+    renderIolLast();
+    const partes = [];
+    if(rep.nuevas.length)  partes.push(rep.nuevas.length+" nuevas");
+    if(rep.cerradas.length) partes.push(rep.cerradas.length+" cerradas");
+    if(rep.sinCosto.length) partes.push(rep.sinCosto.length+" sin costo");
+    toast("Sincronizado con IOL" + (partes.length ? " · "+partes.join(", ") : ""));
+  };
+};
+
+/* ================= OBJETIVOS DE CARTERA ================= */
+function bucketMix(){
+  const m = {}; let tot = 0;
+  S.positions.forEach(p=>{
+    if(p.q<=0) return;
+    const v = valUSD(p); const bk = p.type==="cash" ? "Caja" : (p.bucket||"Otros");
+    m[bk] = (m[bk]||0) + v; tot += v;
+  });
+  return {m, tot};
+}
+function renderTargets(){
+  const box = $("#tgtList"); if(!box) return;
+  const {m, tot} = bucketMix();
+  const nombres = [...new Set([...Object.keys(m), ...Object.keys(S.targets||{})])].sort();
+  box.innerHTML = "";
+  nombres.forEach(bk=>{
+    const actual = tot>0 ? (m[bk]||0)/tot*100 : 0;
+    const row = document.createElement("div"); row.className="tgtrow";
+    row.innerHTML = `<span class="nm">${bk}</span>
+      <span class="ac">${fmt(actual,1)}%</span>
+      <input type="number" inputmode="decimal" step="any" data-bk="${bk}" value="${S.targets&&S.targets[bk]!=null?S.targets[bk]:""}" placeholder="—"/>`;
+    box.appendChild(row);
+  });
+  const suma = Object.values(S.targets||{}).reduce((s,v)=>s+(Number(v)||0),0);
+  $("#tgtSum").innerHTML = S.targets
+    ? `Objetivos cargados · suman <b style="color:${Math.abs(suma-100)<0.5?"var(--up)":"var(--gold)"}">${fmt(suma,1)}%</b>${Math.abs(suma-100)>=0.5?" (idealmente 100%)":""}`
+    : "Sin objetivos definidos: la pantalla de inicio no te va a avisar por desvíos.";
+  $("#tgtTol").value = S.tol!=null ? S.tol : 5;
+}
+$("#tgtSave").onclick = ()=>{
+  const t = {};
+  document.querySelectorAll("#tgtList input[data-bk]").forEach(i=>{
+    const v = parseFloat(i.value);
+    if(isFinite(v) && v>0) t[i.dataset.bk] = Math.round(v*10)/10;
+  });
+  if(!Object.keys(t).length){ toast("Cargá al menos un objetivo"); return; }
+  S.targets = t;
+  const tol = parseFloat($("#tgtTol").value);
+  S.tol = isFinite(tol) && tol>0 ? tol : 5;
+  save(); render(); toast("Objetivos guardados");
+};
+$("#tgtNow").onclick = ()=>{
+  const {m, tot} = bucketMix();
+  if(!tot){ toast("No hay posiciones"); return; }
+  const t = {};
+  Object.entries(m).forEach(([bk,v])=>{ const pct = Math.round(v/tot*1000)/10; if(pct>0) t[bk]=pct; });
+  S.targets = t; if(S.tol==null) S.tol = 5;
+  save(); render(); toast("Objetivos = tu cartera de hoy. Ajustá lo que quieras mover.");
+};
+$("#tgtOff").onclick = ()=>{ if(!confirm("¿Borrar los objetivos y dejar de recibir avisos por desvío?")) return; S.targets=null; save(); render(); toast("Objetivos desactivados"); };
+
 /* ================= CAJA (CASH) ================= */
 $("#btnCash").onclick = ()=>{
   const br = prompt("¿En qué broker está la caja? IOL / Santander / Binance / InvestorTrust", "IOL");
@@ -1272,6 +1741,7 @@ $("#btnUpdate").onclick = async ()=>{
   }catch(e){ fail.push("índices"); }
 
   S.lastUpd = new Date().toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+  if(ok.length) S.lastUpdTs = Date.now();
   save(); render();
   btn.textContent=label; btn.disabled=false;
   if(ok.length && !fail.length) toast("Actualizado: "+ok.join(", "));
@@ -1379,7 +1849,7 @@ document.querySelectorAll(".tabs button").forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("on"));
     b.classList.add("on");
-    ["cartera","operar","rend","ajustes"].forEach(t=>{
+    ["home","cartera","operar","rend","ajustes"].forEach(t=>{
       $("#tab-"+t).classList.toggle("hidden", t!==b.dataset.tab);
     });
   };
@@ -1395,8 +1865,12 @@ document.querySelectorAll("#subAn .chip").forEach(c=>{
   };
 });
 
+$("#hGoUpd").onclick = ()=>$("#btnUpdate").click();
+$("#hGoCart").onclick = ()=>goTab("cartera");
+
 /* ================= INIT ================= */
 load();
+touchVisit(totals().tot);
 $("#opFecha").value = new Date().toISOString().slice(0,10);
 $("#opCcl").value = S.ccl;
 $("#opTipo").dispatchEvent(new Event("change"));
