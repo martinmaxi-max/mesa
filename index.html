@@ -559,7 +559,8 @@ function freshState(){
     flows: [], snaps: [{f:SEED_DATE, v:82789}],
     proj: {...DEF_PROJ}, baggers: {...DEF_BAGG},
     idx: SEED_IDX.map(x=>({...x})), idxTs: SEED_DATE + " (foto inicial)",
-    targets: null, tol: 5, lastVisit: null, lastSyncIOL: null
+    targets: null, tol: 5, lastVisit: null, lastSyncIOL: null, aiKey: "",
+    autoPro: {on:false, fws:["blackrock","bridgewater"], days:7}, proReports: {}
   };
   migrateModel(st);
   return st;
@@ -583,6 +584,9 @@ function load(){
       if(S.tol == null) S.tol = 5;
       if(S.lastVisit === undefined) S.lastVisit = null;
       if(S.lastSyncIOL === undefined) S.lastSyncIOL = null;
+      if(S.aiKey === undefined) S.aiKey = "";
+      if(!S.autoPro) S.autoPro = {on:false, fws:["blackrock","bridgewater"], days:7};
+      if(!S.proReports) S.proReports = {};
       migrateModel(S);
       return;
     }
@@ -1335,18 +1339,94 @@ function portfolioSummary(){
   const cons={};
   S.positions.filter(p=>p.q>0 && p.type!=="cash").forEach(p=>{ cons[p.t]=(cons[p.t]||0)+valUSD(p); });
   const tot=Object.values(cons).reduce((a,b)=>a+b,0);
-  return Object.entries(cons).sort((a,b)=>b[1]-a[1])
+  let out = Object.entries(cons).sort((a,b)=>b[1]-a[1])
     .map(([t,v])=>`${t} US$${Math.round(v)} (${(v/tot*100).toFixed(1)}%)`).join(", ")
     + `. Total US$${Math.round(tot)}.`;
+  try{
+    const {m, tot:bt} = bucketMix();
+    if(bt>0){
+      const tol = S.tol!=null ? S.tol : 5;
+      const filas = Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([bk,v])=>{
+        const act = v/bt*100;
+        const tgt = S.targets && S.targets[bk]!=null ? Number(S.targets[bk]) : null;
+        if(tgt==null) return `${bk} ${act.toFixed(1)}% (sin objetivo)`;
+        const d = act - tgt;
+        const fuera = Math.abs(d) >= tol ? " FUERA DE BANDA" : "";
+        return `${bk} ${act.toFixed(1)}% vs objetivo ${tgt}% (${d>=0?"+":""}${d.toFixed(1)} pp${fuera})`;
+      });
+      out += ` Por categoría (tolerancia ±${tol} pp): ` + filas.join("; ");
+    }
+  }catch(e){}
+  return out;
 }
-function buildPrompt(fw){ return fw.prompt(T.ticker||"", portfolioSummary()); }
+/* Reglas fijas del inversor: se inyectan en todos los frameworks para que
+   el análisis no contradiga el plan ya acordado. */
+const POLICY = `REGLAS FIJAS DEL INVERSOR (respetalas; si algo que vas a recomendar las contradice, decilo explícitamente en vez de ignorarlas):
+- Horizonte 2030-2035. No hace trading ni sigue el mercado a diario.
+- Aporte de ~USD 2.500/mes: las posiciones nuevas se construyen con capital nuevo, no vendiendo lo que ya tiene.
+- Rebalanceo semestral (enero y julio). Fuera de calendario solo si una categoría se sale de su banda.
+- Techo duro de cripto: 22% del total.
+- Ninguna posición individual arriba de 8%, salvo ISSP y BTC.
+- Costo round-trip en BYMA ~2,1%: cualquier sugerencia de rotar tiene que superar ese umbral para valer la pena.
+- Máximo 3 posiciones nuevas por año.
+- Se cierra una posición cuando la tesis se invalida, no cuando cae de precio.
+- No es asesor matriculado: presentá análisis y escenarios, no órdenes.`;
+function buildPrompt(fw){ return fw.prompt(T.ticker||"", portfolioSummary()) + "\n\n" + POLICY; }
 async function callClaude(prompt, withWeb){
   const body={model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:prompt}]};
   if(withWeb) body.tools=[{type:"web_search_20250305",name:"web_search"}];
-  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  const d=await r.json();
-  if(!d||!Array.isArray(d.content)) throw new Error((d&&d.error&&d.error.message)||"respuesta inesperada");
+  const headers={"Content-Type":"application/json"};
+  const key=(S.aiKey||"").trim();
+  if(key){ /* fuera de claude.ai hace falta key propia */
+    headers["x-api-key"]=key;
+    headers["anthropic-version"]="2023-06-01";
+    headers["anthropic-dangerous-direct-browser-access"]="true";
+  }
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers,body:JSON.stringify(body)});
+  let d=null; try{ d=await r.json(); }catch(e){}
+  if(!r.ok){
+    const m=(d&&d.error&&d.error.message)||("HTTP "+r.status);
+    if(r.status===401||r.status===403) throw new Error(key?"la API key fue rechazada":"falta configurar tu API key");
+    throw new Error(m);
+  }
+  if(!d||!Array.isArray(d.content)) throw new Error("respuesta inesperada");
   return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+}
+/* ---- Informes automáticos ----
+   Corre al abrir la app, como mucho cada N días, y solo si los datos de IOL
+   no están vencidos. Automatizar el análisis sobre tenencias viejas produce
+   informes prolijos sobre una cartera que ya no existe. */
+const AUTOPRO_MAX_FWS = 2;
+function diasDesde(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
+function iolStaleDays(){
+  const s = S.lastSyncIOL; if(!s) return Infinity;
+  const m = String(s).match(/(\d{2})\/(\d{2})/); if(!m) return Infinity;
+  const now = new Date(); let d = new Date(now.getFullYear(), +m[2]-1, +m[1]);
+  if(d > now) d.setFullYear(now.getFullYear()-1);
+  return (now - d)/86400000;
+}
+async function autoProRun(){
+  const ap = S.autoPro || {};
+  if(!ap.on || !(S.aiKey||"").trim()) return;
+  const stale = iolStaleDays();
+  if(stale > 21){
+    S.proReports.__aviso = {ts:Date.now(), out:"", stale:Math.round(stale)};
+    save(); renderPro(); return;
+  }
+  delete S.proReports.__aviso;
+  const pend = (ap.fws||[]).slice(0,AUTOPRO_MAX_FWS)
+    .map(id=>FRAMEWORKS.find(f=>f.id===id))
+    .filter(f=>f && !f.needsTicker && diasDesde((S.proReports[f.id]||{}).ts) >= (ap.days||7));
+  for(const fw of pend){
+    try{
+      const out = await callClaude(fw.prompt("", portfolioSummary()) + "\n\n" + POLICY, true);
+      S.proReports[fw.id] = {ts:Date.now(), out};
+      save(); renderPro();
+    }catch(e){
+      S.proReports[fw.id] = {ts:Date.now(), out:"", err:e.message};
+      save(); renderPro(); break;   // si falla uno (key, saldo), no quemamos el resto
+    }
+  }
 }
 function renderPro(){
   const box=$("#proBody"); if(!box) return;
@@ -1364,26 +1444,72 @@ function renderPro(){
     </div>`).join("")}</div>`;
   if(T.fw){
     const falta = T.fw.needsTicker && !T.ticker;
+    const rep = S.proReports[T.fw.id];
+    const cuerpo = T.out || (rep && rep.out) || "";
+    const edad = T.out ? "" : (rep && rep.ts ? ` · automático, hace ${Math.floor(diasDesde(rep.ts))} d` : "");
     h+=`<div class="card">
-      <div style="font-weight:700">${T.fw.e} ${T.fw.name}${T.fw.needsTicker&&T.ticker?" · "+esc(T.ticker):""}</div>
+      <div style="font-weight:700">${T.fw.e} ${T.fw.name}${T.fw.needsTicker&&T.ticker?" · "+esc(T.ticker):""}<span class="meta">${edad}</span></div>
       ${falta?'<div class="tag" style="margin-top:4px">Elegí un ticker arriba.</div>':""}
       <div class="btnrow">
         <button class="btn" id="proRun" ${falta||T.loading?"disabled":""}>${T.loading?"Analizando…":"⚡ Generar informe"}</button>
         <button class="btn sec mini" id="proCopy" ${falta?"disabled":""}>📋 Copiar prompt</button>
       </div>
-      ${T.err?`<div class="tag" style="color:var(--down);margin-top:8px">${esc(T.err)} — usá "Copiar prompt" y pegalo en Claude.</div>`:""}
-      ${T.out?`<div style="font-size:.82rem;line-height:1.55;margin-top:10px;border-top:1px solid var(--line);padding-top:10px">${mdToHtml(T.out)}</div>`:""}
+      ${rep&&rep.err&&!T.out?`<div class="tag" style="color:var(--down);margin-top:8px">El último automático falló: ${esc(rep.err)}</div>`:""}
+      ${T.err?`<div class="tag" style="color:var(--down);margin-top:8px">${esc(T.err)} — o usá "Copiar prompt" y pegalo en Claude.</div>`:""}
+      ${cuerpo?`<div style="font-size:.82rem;line-height:1.55;margin-top:10px;border-top:1px solid var(--line);padding-top:10px">${mdToHtml(cuerpo)}</div>`:""}
     </div>`;
   }
+  const ap = S.autoPro||{}; const av = S.proReports.__aviso;
+  const autoFws = FRAMEWORKS.filter(f=>!f.needsTicker);
+  h+=`<div class="card">
+    <div style="font-weight:700">🔄 Informes automáticos</div>
+    <div class="meta" style="margin-top:4px">Se regeneran solos al abrir la app, como mucho cada N días. Necesita API key.</div>
+    <div class="btnrow" style="margin-top:8px">
+      <button class="btn ${ap.on?"":"sec"} mini" id="apOn">${ap.on?"✓ Activado":"Desactivado"}</button>
+      <button class="btn sec mini" id="apDays">Cada ${ap.days||7} días</button>
+    </div>
+    <div style="margin-top:8px">${autoFws.map(f=>`<span class="pill" data-apfw="${f.id}" style="cursor:pointer;${(ap.fws||[]).includes(f.id)?'border-color:var(--gold);color:var(--gold)':''}">${f.e} ${esc(f.name)}</span>`).join("")}</div>
+    <div class="meta" style="margin-top:6px">Máximo ${AUTOPRO_MAX_FWS} — cada informe consume crédito de API.</div>
+    ${av?`<div class="tag" style="color:var(--down);margin-top:8px">Pausado: hace ${av.stale} días que no sincronizás IOL. No genero informes sobre tenencias vencidas.</div>`:""}
+  </div>`;
+  h+=`<div class="card">
+    <label>API key de Anthropic <span class="meta">(solo hace falta fuera de claude.ai)</span></label>
+    <input id="proKey" type="password" value="${esc(S.aiKey||"")}" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" spellcheck="false"/>
+    <div class="meta" style="margin-top:6px">Queda guardada solo en este teléfono. Sin key, "Generar informe" solo funciona dentro de claude.ai; el botón Copiar prompt anda siempre.</div>
+    <div class="btnrow"><button class="btn sec mini" id="proKeyDel">Borrar key</button></div>
+  </div>`;
   box.innerHTML=h;
   const tk=$("#proTk");
   if(tk){ tk.oninput=()=>{ T.ticker=tk.value.trim().toUpperCase(); }; tk.onblur=()=>renderPro(); }
+  const kk=$("#proKey");
+  if(kk){ kk.onchange=()=>{ S.aiKey=kk.value.trim(); save(); toast(S.aiKey?"Key guardada":"Key borrada"); }; }
+  const kd=$("#proKeyDel");
+  if(kd){ kd.onclick=()=>{ S.aiKey=""; save(); renderPro(); toast("Key borrada"); }; }
+  const ao=$("#apOn");
+  if(ao){ ao.onclick=()=>{
+    if(!S.autoPro) S.autoPro={fws:["blackrock"],days:7};
+    S.autoPro.on=!S.autoPro.on; save(); renderPro();
+    if(S.autoPro.on){ if(!(S.aiKey||"").trim()) toast("Cargá la API key abajo"); else autoProRun(); }
+  }; }
+  const ad=$("#apDays");
+  if(ad){ ad.onclick=()=>{
+    const ciclo=[3,7,14,30]; const i=ciclo.indexOf(S.autoPro.days||7);
+    S.autoPro.days=ciclo[(i+1)%ciclo.length]; save(); renderPro();
+  }; }
 }
 document.addEventListener("click",async e=>{
   const fwEl=e.target.closest("[data-profw]");
   if(fwEl){ T.fw=FRAMEWORKS.find(f=>f.id===fwEl.dataset.profw); T.out=""; T.err=""; renderPro(); return; }
   const tkEl=e.target.closest("[data-protk]");
   if(tkEl){ T.ticker=tkEl.dataset.protk; renderPro(); return; }
+  const apEl=e.target.closest("[data-apfw]");
+  if(apEl){
+    const id=apEl.dataset.apfw; const l=S.autoPro.fws||[];
+    if(l.includes(id)) S.autoPro.fws=l.filter(x=>x!==id);
+    else if(l.length>=AUTOPRO_MAX_FWS) toast("Máximo "+AUTOPRO_MAX_FWS+" — sacá uno primero");
+    else S.autoPro.fws=[...l,id];
+    save(); renderPro(); return;
+  }
   if(e.target.id==="proCopy" && T.fw){
     const p=buildPrompt(T.fw);
     try{ await navigator.clipboard.writeText(p); toast("Prompt copiado — pegalo en Claude 📋"); }
@@ -2008,6 +2134,8 @@ try{
     fbConnect(cfg, key, true);
   }
 }catch(e){}
+/* auto-informes: esperamos a que asienten nube y precios */
+setTimeout(()=>{ try{ autoProRun(); }catch(e){} }, 4000);
 </script>
 </body>
 </html>
