@@ -596,7 +596,11 @@ function load(){
   save();
 }
 function save(){
-  S.rev = Date.now();
+  // Si la nube está conectada pero todavía no llegó su primera respuesta, NO marcamos esta versión como
+  // "más nueva": así un dispositivo con datos viejos nunca pisa la nube al abrir la app.
+  let canStamp = true;
+  try{ canStamp = !fb.ref || fb.ready; }catch(e){}
+  if(canStamp) S.rev = Date.now();
   try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
   cloudPush();
 }
@@ -2178,7 +2182,7 @@ function fbConnect(cfgStr, key, silent){
       fbStatus("☁️ Conectado · al día", true);
     }, e=>fbStatus("Error de nube: " + e.message));
     localStorage.setItem(FBKEY, JSON.stringify({cfg:cfgStr, key}));
-    fb.ready = true;
+    // fb.ready se activa recién cuando llega la primera respuesta de la nube (ver onSnapshot)
     fbStatus("☁️ Conectado como «" + key + "»", true);
     if(!silent) toast("Nube conectada ✓");
   }catch(e){
