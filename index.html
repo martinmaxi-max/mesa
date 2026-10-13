@@ -239,6 +239,7 @@ textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:
       <button class="btn mini sec" id="opBuscaCcl" style="margin-top:5px">Buscar CCL de esa fecha</button></div>
     </div>
     <div class="tag">Si estás cargando una operación vieja, poné el CCL de ese día (no el de hoy) para que el costo en dólares quede bien. Si no lo tocás, usa el CCL actual.</div>
+    <div id="opEditBanner" class="tag hidden" style="margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px"></div>
     <div class="btnrow"><button class="btn" id="opGo">Registrar</button></div>
   </div>
 
@@ -990,10 +991,12 @@ function renderOps(){
   if(!S.ops.length){ box.innerHTML='<span class="tag">Sin operaciones registradas todavía.</span>'; }
   else{
     box.innerHTML="";
-    [...S.ops].reverse().forEach(o=>{
+    S.ops.map((o,i)=>({o,i})).reverse().forEach(({o,i})=>{
       const d=document.createElement("div"); d.className="oprow";
-      d.innerHTML=`<div class="l1"><span>${o.tipo==="compra"?"🟢 Compra":"🔴 Venta"} ${o.t} <span class="bkr bk-${o.b}" style="font-size:.6rem">${BNAME[o.b]}</span></span><span>${usd(o.totUSD)}</span></div>
-      <div class="l2"><span>${fmt(o.q,4).replace(/,?0+$/,"")} u × ${o.cur==="ARS"?"$"+fmt(o.px,2)+" ARS":"US$"+fmt(o.px,2)}</span><span>${o.fecha}</span></div>`;
+      const rot = o.grp ? ' <span class="tag" style="display:inline;font-size:.6rem">🔁 rotación</span>' : '';
+      d.innerHTML=`<div class="l1"><span>${o.tipo==="compra"?"🟢 Compra":"🔴 Venta"} ${o.t} <span class="bkr bk-${o.b}" style="font-size:.6rem">${BNAME[o.b]}</span>${rot}</span><span>${usd(o.totUSD)}</span></div>
+      <div class="l2"><span>${fmt(o.q,4).replace(/,?0+$/,"")} u × ${o.cur==="ARS"?"$"+fmt(o.px,2)+" ARS":"US$"+fmt(o.px,2)}</span><span>${o.fecha}</span></div>
+      <div class="l2" style="justify-content:flex-end;gap:12px;margin-top:4px"><button class="del" style="color:var(--dim)" data-editop="${i}">editar</button><button class="del" data-delop="${i}">borrar</button></div>`;
       box.appendChild(d);
     });
   }
@@ -1545,17 +1548,19 @@ function findOrCreatePos(t,b,assetType){
   return pos;
 }
 // Registra una compra: agrega un lote nuevo con su costo en USD (usando el CCL de ESA fecha si es ARS).
-function doCompra(t,b,q,px,cur,fecha,ccl,assetType){
+function newOpId(){ return "op"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function doCompra(t,b,q,px,cur,fecha,ccl,assetType,grp){
   const totUSD = cur==="ARS" ? q*px/ccl : q*px;
   const pos = findOrCreatePos(t,b,assetType);
-  pos.lots.push({q, costUSD:totUSD, fecha});
+  const id = newOpId();
+  pos.lots.push({q, costUSD:totUSD, fecha, opId:id});
   invRecalc(pos);
   pos.q += q; pos.px = px; pos.cur = cur;
-  S.ops.push({tipo:"compra", t, b, q, px, cur, totUSD, fecha});
+  S.ops.push({id, grp:grp||null, tipo:"compra", t, b, q, px, cur, totUSD, fecha, ccl, assetType:assetType||pos.type});
   return {ok:true, totUSD};
 }
 // Registra una venta: consume lotes FIFO (el más viejo primero) y calcula la ganancia/pérdida real.
-function doVenta(t,b,q,px,cur,fecha,ccl){
+function doVenta(t,b,q,px,cur,fecha,ccl,grp){
   const pos = S.positions.find(p=>p.t===t && p.b===b);
   const qty = pos ? (pos.lots||[]).reduce((s,l)=>s+l.q,0) : 0; // cantidad con costo cargado (FIFO)
   if(!pos || pos.q < q - 1e-6) return {ok:false, msg:"No tenés esa cantidad de "+t+" en "+BNAME[b]};
@@ -1569,7 +1574,7 @@ function doVenta(t,b,q,px,cur,fecha,ccl){
       const take=Math.min(lot.q, remaining);
       const costPortion=(lot.costUSD/lot.q)*take;
       costUsed+=costPortion;
-      detail.push({q:take, costUSD:costPortion, buyFecha:lot.fecha});
+      detail.push({q:take, costUSD:costPortion, buyFecha:lot.fecha, opId:lot.opId||null});
       lot.q-=take; lot.costUSD-=costPortion; remaining-=take;
       if(lot.q<=1e-6) pos.lots.shift();
     }
@@ -1577,10 +1582,12 @@ function doVenta(t,b,q,px,cur,fecha,ccl){
   }
   invRecalc(pos);
   const pnl = noCost ? 0 : (totUSD-costUsed);
-  S.closed.push({t,b,q,pnl,fecha,detail,noCost});
+  const id = newOpId();
+  const qBefore = pos.q;
+  S.closed.push({opId:id, t,b,q,pnl,fecha,detail,noCost});
   pos.q -= q; pos.px=px; pos.cur=cur;
   if(pos.q<=1e-6) pos.q=0;
-  S.ops.push({tipo:"venta", t, b, q, px, cur, totUSD, fecha});
+  S.ops.push({id, grp:grp||null, tipo:"venta", t, b, q, px, cur, totUSD, fecha, ccl, qBefore});
   return {ok:true, totUSD, pnl, noCost};
 }
 function readOpForm(suffix){
@@ -1623,14 +1630,114 @@ $("#opGo").onclick = ()=>{
   } else { // rotación
     const B=readOpForm("2");
     if(!B.t||isNaN(B.q)||B.q<=0||isNaN(B.px)||B.px<=0){ toast("Completá también los datos de lo que comprás"); return; }
-    const rv=doVenta(A.t,A.b,A.q,A.px,A.cur,fecha,ccl);
+    const grp="rot"+Date.now().toString(36);
+    const rv=doVenta(A.t,A.b,A.q,A.px,A.cur,fecha,ccl,grp);
     if(!rv.ok){ toast(rv.msg); return; }
-    doCompra(B.t,B.b,B.q,B.px,B.cur,fecha,ccl,B.assetType);
+    doCompra(B.t,B.b,B.q,B.px,B.cur,fecha,ccl,B.assetType,grp);
     save(); render();
     toast("Rotación registrada: vendiste "+A.t+", compraste "+B.t+(rv.noCost?"":" · "+(rv.pnl>=0?"+":"")+fmt(rv.pnl,0)+" en la venta"));
   }
   ["opQty","opPx","opTicker","opQty2","opPx2","opTicker2"].forEach(id=>{ const e=$("#"+id); if(e) e.value=""; });
+  setEditBanner(null);
 };
+
+/* ================= EDITAR / BORRAR OPERACIONES ================= */
+// Deshace una compra: saca su lote. Si ese lote ya lo consumió una venta posterior, no se puede (hay que borrar esa venta antes).
+function undoCompra(o){
+  const pos=S.positions.find(p=>p.t===o.t && p.b===o.b);
+  if(!pos) return {ok:false, msg:"No encuentro la posición de "+o.t};
+  pos.lots=pos.lots||[];
+  let i = o.id ? pos.lots.findIndex(l=>l.opId===o.id) : -1;
+  if(i<0) i = pos.lots.findIndex(l=>!l.opId && l.fecha===o.fecha && Math.abs(l.q-o.q)<1e-6 && Math.abs(l.costUSD-o.totUSD)<0.01);
+  if(i<0 || Math.abs(pos.lots[i].q-o.q)>1e-6)
+    return {ok:false, msg:"Esa compra de "+o.t+" ya fue usada (total o parcial) por una venta posterior. Borrá primero esa venta."};
+  pos.lots.splice(i,1);
+  invRecalc(pos);
+  pos.q -= o.q; if(pos.q<=1e-6) pos.q=0;
+  return {ok:true};
+}
+// Deshace una venta: devuelve los lotes consumidos (en orden de fecha) y borra el resultado realizado.
+function undoVenta(o){
+  const pos=S.positions.find(p=>p.t===o.t && p.b===o.b) || findOrCreatePos(o.t,o.b);
+  let ci = o.id ? S.closed.findIndex(c=>c.opId===o.id) : -1;
+  if(ci<0){ for(let k=S.closed.length-1;k>=0;k--){ const c=S.closed[k]; if(!c.opId && c.t===o.t && c.b===o.b && c.fecha===o.fecha && Math.abs(c.q-o.q)<1e-6){ ci=k; break; } } }
+  const c = ci>=0 ? S.closed[ci] : null;
+  pos.lots=pos.lots||[];
+  if(c && c.detail){
+    c.detail.forEach(d=>{
+      const ex = d.opId ? pos.lots.find(l=>l.opId===d.opId) : pos.lots.find(l=>!l.opId && l.fecha===d.buyFecha);
+      if(ex){ ex.q+=d.q; ex.costUSD+=d.costUSD; }
+      else pos.lots.push({q:d.q, costUSD:d.costUSD, fecha:d.buyFecha, opId:d.opId||undefined});
+    });
+    pos.lots.sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+  }
+  if(ci>=0) S.closed.splice(ci,1);
+  invRecalc(pos);
+  pos.q += o.q;
+  return {ok:true};
+}
+function opGroup(idx){
+  const o=S.ops[idx];
+  if(!o.grp) return [idx];
+  return S.ops.map((x,i)=>x.grp===o.grp?i:-1).filter(i=>i>=0);
+}
+// Borra la operación (y su otra pata si es rotación). Simula sobre una copia: si algo falla, no toca nada.
+function deleteOp(idx){
+  const backup=JSON.stringify({positions:S.positions, closed:S.closed, ops:S.ops});
+  const idxs=opGroup(idx).sort((a,b)=>b-a); // de la más nueva a la más vieja
+  for(const i of idxs){
+    const o=S.ops[i];
+    const r = o.tipo==="compra" ? undoCompra(o) : undoVenta(o);
+    if(!r.ok){ const bk=JSON.parse(backup); S.positions=bk.positions; S.closed=bk.closed; S.ops=bk.ops; return r; }
+    S.ops.splice(i,1);
+  }
+  return {ok:true, n:idxs.length};
+}
+function setEditBanner(txt){
+  const el=$("#opEditBanner"); if(!el) return;
+  if(txt){ el.innerHTML=txt; el.classList.remove("hidden"); } else el.classList.add("hidden");
+}
+function fillOpForm(suffix,o){
+  $("#opBroker"+suffix).value=o.b;
+  $("#opTicker"+suffix).value=o.t;
+  $("#opQty"+suffix).value=o.q;
+  $("#opPx"+suffix).value=o.px;
+  $("#opMon"+suffix).value=o.cur;
+  const pos=S.positions.find(p=>p.t===o.t && p.b===o.b);
+  const at=o.assetType||(pos&&pos.type);
+  if(at && $("#opAssetType"+suffix)) $("#opAssetType"+suffix).value=at;
+}
+function editOp(idx){
+  const grp=opGroup(idx).map(i=>S.ops[i]);
+  const venta=grp.find(o=>o.tipo==="venta"), compra=grp.find(o=>o.tipo==="compra");
+  const tipo = grp.length>1 ? "rotacion" : grp[0].tipo;
+  const base = grp[0];
+  const cclOp = base.ccl || (base.cur==="ARS" && base.totUSD ? base.q*base.px/base.totUSD : S.ccl);
+  if(!confirm("Para editar, la operación se deshace y sus datos quedan cargados en el formulario.\n\nCorregí lo que haga falta y tocá «Registrar». ¿Seguimos?")) return;
+  const r=deleteOp(idx);
+  if(!r.ok){ toast(r.msg); return; }
+  $("#opTipo").value=tipo; $("#opTipo").onchange();
+  if(tipo==="rotacion"){ fillOpForm("",venta); fillOpForm("2",compra); }
+  else fillOpForm("",base);
+  $("#opFecha").value=base.fecha;
+  $("#opCcl").value=Math.round(cclOp*100)/100;
+  save(); render();
+  setEditBanner("✏️ Editando "+(tipo==="rotacion"?"rotación "+venta.t+" → "+compra.t:tipo+" de "+base.t)+". Corregí y tocá <b>Registrar</b>. Si no la registrás de nuevo, queda borrada.");
+  $("#opTipo").scrollIntoView({behavior:"smooth", block:"center"});
+}
+document.addEventListener("click",e=>{
+  const ed=e.target.closest("[data-editop]");
+  if(ed){ editOp(+ed.dataset.editop); return; }
+  const dl=e.target.closest("[data-delop]");
+  if(dl){
+    const idx=+dl.dataset.delop, o=S.ops[idx], grp=opGroup(idx);
+    const desc = grp.length>1 ? "la rotación completa (venta "+S.ops[grp[0]].t+" + compra "+S.ops[grp[1]].t+")" : "la "+o.tipo+" de "+o.t+" del "+o.fecha;
+    if(!confirm("¿Borrar "+desc+"?\nSe revierten las cantidades, los lotes de costo y la ganancia/pérdida realizada.")) return;
+    const r=deleteOp(idx);
+    if(!r.ok){ toast(r.msg); return; }
+    save(); render(); toast(grp.length>1?"Rotación borrada ✓":"Operación borrada ✓");
+  }
+});
 
 /* ================= ACTUALIZACIÓN DE PRECIOS ================= */
 async function fetchJSON(url){
